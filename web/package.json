@@ -1,0 +1,22 @@
+{
+  "name": "chatgpt-analytics-web",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "14.2.3",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "swr": "^2.2.0",
+    "react-apexcharts": "^1.4.1",
+    "apexcharts": "^3.46.0",
+    "clsx": "^2.1.0",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "typescript": "^5"
+  }
+} 

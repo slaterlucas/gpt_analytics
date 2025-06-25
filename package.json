@@ -1,0 +1,13 @@
+{
+  "name": "chatgpt-analytics",
+  "private": true,
+  "workspaces": ["web"],
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "wait-on": "^7.0.1"
+  },
+  "scripts": {
+    "postinstall": "python scripts/dev.py --install",
+    "dev": "python scripts/dev.py --serve"
+  }
+} 

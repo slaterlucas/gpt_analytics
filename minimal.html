@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatGPT Analytics - Minimal</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .title {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        input[type="file"], input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .progress-container {
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e1e5e9;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 4px;
+            transition: width 0.3s;
+            width: 0%;
+        }
+        
+        .status {
+            text-align: center;
+            margin-top: 10px;
+            color: #666;
+        }
+        
+        .results-container {
+            margin-top: 30px;
+            display: none;
+        }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 20px;
+        }
+        
+        .chart-card {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .chart-title {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .stats-summary {
+            background: #f0f4ff;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .stat-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .model-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+        
+        .model-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 8px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .model-name {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .model-stats {
+            text-align: right;
+        }
+        
+        .model-percentage {
+            font-size: 18px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .model-count {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .success {
+            text-align: center;
+            color: #4caf50;
+            margin: 20px 0;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">ChatGPT Analytics</h1>
+        <p style="text-align: center; color: #666; margin-bottom: 30px;">
+            Minimal version - Analyze your ChatGPT conversation data with model usage insights
+        </p>
+        
+        <div id="upload-form">
+            <div class="form-group">
+                <label for="api-key">OpenAI API Key (optional for this demo)</label>
+                <input type="password" id="api-key" placeholder="sk-... (not required for basic analysis)">
+            </div>
+            
+            <div class="form-group">
+                <label for="file-input">ChatGPT Export File</label>
+                <input type="file" id="file-input" accept=".json">
+                <small style="color: #666;">Upload your conversations.json file from ChatGPT</small>
+            </div>
+            
+            <button class="btn" id="analyze-btn" onclick="startAnalysis()">
+                Analyze Conversations
+            </button>
+        </div>
+        
+        <div class="error" id="error-msg"></div>
+        
+        <div class="progress-container" id="progress-container">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <div class="status" id="status-text">Starting analysis...</div>
+        </div>
+        
+        <div class="results-container" id="results-container">
+            <div class="stats-summary" id="stats-summary">
+                <div class="success" id="results-info"></div>
+                <div class="stats-grid" id="stats-grid"></div>
+            </div>
+            
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <h3 class="chart-title">Topic Distribution</h3>
+                    <div id="topics-chart"></div>
+                </div>
+                
+                <div class="chart-card">
+                    <h3 class="chart-title">Model Usage</h3>
+                    <div id="models-chart"></div>
+                    <div class="model-list" id="model-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/babel">
+        let currentJobId = null;
+        let pollInterval = null;
+
+        function showError(message) {
+            const errorEl = document.getElementById('error-msg');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('error-msg').style.display = 'none';
+        }
+
+        function showProgress() {
+            document.getElementById('progress-container').style.display = 'block';
+            document.getElementById('upload-form').style.display = 'none';
+        }
+
+        function hideProgress() {
+            document.getElementById('progress-container').style.display = 'none';
+        }
+
+        function showResults() {
+            document.getElementById('results-container').style.display = 'block';
+        }
+
+        function updateProgress(percent, message) {
+            document.getElementById('progress-fill').style.width = percent + '%';
+            document.getElementById('status-text').textContent = message;
+        }
+
+        async function startAnalysis() {
+            hideError();
+            
+            const fileInput = document.getElementById('file-input');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showError('Please select a file');
+                return;
+            }
+            
+            const analyzeBtn = document.getElementById('analyze-btn');
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = 'Uploading...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const response = await fetch('http://127.0.0.1:8000/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Upload failed: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                currentJobId = result.job_id;
+                
+                showProgress();
+                pollStatus();
+                
+            } catch (error) {
+                showError(`Error: ${error.message}`);
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = 'Analyze Conversations';
+            }
+        }
+
+        async function pollStatus() {
+            if (!currentJobId) return;
+            
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/status/${currentJobId}`);
+                const status = await response.json();
+                
+                if (status.error) {
+                    showError(status.error);
+                    hideProgress();
+                    return;
+                }
+                
+                updateProgress(status.progress || 0, 
+                    status.ready ? 'Complete!' : `Processing... ${status.progress || 0}%`);
+                
+                if (status.ready) {
+                    clearInterval(pollInterval);
+                    await loadResults();
+                } else {
+                    pollInterval = setTimeout(pollStatus, 2000);
+                }
+                
+            } catch (error) {
+                showError('Failed to check status');
+                hideProgress();
+            }
+        }
+
+        async function loadResults() {
+            try {
+                // Load both topics and models data
+                const [topicsResponse, modelsResponse] = await Promise.all([
+                    fetch(`http://127.0.0.1:8000/topics/${currentJobId}`),
+                    fetch(`http://127.0.0.1:8000/models/${currentJobId}`)
+                ]);
+                
+                const topicsData = await topicsResponse.json();
+                const modelsData = await modelsResponse.json();
+                
+                if (topicsData.error || modelsData.error) {
+                    showError(topicsData.error || modelsData.error);
+                    return;
+                }
+                
+                hideProgress();
+                showResults();
+                
+                // Display summary stats
+                displaySummaryStats(topicsData, modelsData);
+                
+                // Create charts
+                createTopicsChart(topicsData);
+                createModelsChart(modelsData);
+                createModelsList(modelsData);
+                
+            } catch (error) {
+                showError('Failed to load results');
+            }
+        }
+
+        function displaySummaryStats(topicsData, modelsData) {
+            document.getElementById('results-info').textContent = 
+                `Analysis Complete! 🎉`;
+            
+            const statsGrid = document.getElementById('stats-grid');
+            statsGrid.innerHTML = `
+                <div class="stat-item">
+                    <div class="stat-number">${topicsData.message_count || 0}</div>
+                    <div class="stat-label">Messages</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">${modelsData.conversation_count || 0}</div>
+                    <div class="stat-label">Conversations</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">${modelsData.total_requests || 0}</div>
+                    <div class="stat-label">API Requests</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">${modelsData.models?.length || 0}</div>
+                    <div class="stat-label">Models Used</div>
+                </div>
+            `;
+        }
+
+        function createTopicsChart(data) {
+            if (!data.series || data.series.length === 0) {
+                document.getElementById('topics-chart').innerHTML = 
+                    '<p style="text-align: center; color: #666;">No topics found</p>';
+                return;
+            }
+            
+            const options = {
+                series: data.series,
+                chart: {
+                    type: 'donut',
+                    height: 300
+                },
+                labels: data.labels,
+                legend: {
+                    position: 'bottom'
+                },
+                plotOptions: {
+                    pie: {
+                        donut: {
+                            size: '60%'
+                        }
+                    }
+                },
+                colors: ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe', '#00f2fe']
+            };
+            
+            const chart = new ApexCharts(document.querySelector("#topics-chart"), options);
+            chart.render();
+        }
+
+        function createModelsChart(data) {
+            if (!data.models || data.models.length === 0) {
+                document.getElementById('models-chart').innerHTML = 
+                    '<p style="text-align: center; color: #666;">No model data found</p>';
+                return;
+            }
+            
+            const series = data.models.map(m => m.percentage);
+            const labels = data.models.map(m => m.model);
+            
+            const options = {
+                series: series,
+                chart: {
+                    type: 'donut',
+                    height: 300
+                },
+                labels: labels,
+                legend: {
+                    position: 'bottom'
+                },
+                plotOptions: {
+                    pie: {
+                        donut: {
+                            size: '60%'
+                        }
+                    }
+                },
+                colors: ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dda0dd']
+            };
+            
+            const chart = new ApexCharts(document.querySelector("#models-chart"), options);
+            chart.render();
+        }
+
+        function createModelsList(data) {
+            const modelsList = document.getElementById('model-list');
+            
+            if (!data.models || data.models.length === 0) {
+                modelsList.innerHTML = '<p style="text-align: center; color: #666;">No model data</p>';
+                return;
+            }
+            
+            modelsList.innerHTML = data.models.map(model => `
+                <div class="model-item">
+                    <div class="model-name">${model.model}</div>
+                    <div class="model-stats">
+                        <div class="model-percentage">${model.percentage}%</div>
+                        <div class="model-count">${model.count} requests</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Reset button
+        function reset() {
+            location.reload();
+        }
+    </script>
+</body>
+</html> 

@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+python-multipart
+ijson
+duckdb
+faiss-cpu
+bertopic
+python-dotenv
+sentence-transformers 
