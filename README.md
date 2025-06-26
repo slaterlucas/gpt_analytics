@@ -15,7 +15,7 @@ A modern, full-stack analytics platform for analyzing your ChatGPT conversation 
 
 ```bash
 git clone https://github.com/yourusername/chatgpt-analytics
-cd chatgpt-analytics
+cd gpt-analytics
 npm install        # One-time setup (~30 seconds)
 npm run dev        # Single command → browser at http://localhost:3000
 ```

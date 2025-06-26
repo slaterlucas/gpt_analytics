@@ -17,10 +17,10 @@ def serve():
     os.chdir(ROOT)
     cmd = [
         "npx", "concurrently", "-k",
-        f"\"{PY}\" -m uvicorn api.app.main:app --reload --port 8000",
-        "\"npm\" --workspace web run dev"
+        f"{PY} -m uvicorn api.app.main:app --reload --port 8000",
+        "cd web && npm run dev"
     ]
-    subprocess.call(" ".join(cmd), shell=True)
+    subprocess.call(cmd)
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()

@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { Upload, Terminal, Zap, Moon, Sun, MessageSquare, Database, Clock } from 'lucide-react';
+import { Upload, Terminal, Zap, Moon, Sun, MessageSquare, Database, Clock, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,8 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useTheme } from 'next-themes';
 import dynamic from 'next/dynamic';
 
-// Dynamically import ApexCharts to avoid SSR issues
-const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
+// Dynamically import ApexCharts with better error handling
+const Chart = dynamic(() => import('react-apexcharts'), { 
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-terminal" /></div>
+});
 
 interface FileUploadProps {
   onFileSelect: (file: File | null) => void;
@@ -52,6 +55,93 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, selectedFile }) =
       <p className="text-xs text-muted-foreground font-mono">
         // export from ChatGPT settings → data controls
       </p>
+    </div>
+  );
+};
+
+// New separate loading screen component
+const LoadingScreen: React.FC<{ progress: number; message: string; theme: string | undefined }> = ({ progress, message, theme }) => {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      {/* Theme toggle */}
+      <div className="absolute top-4 right-4 z-20">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {}} // Disabled during loading
+          disabled
+          className="retro-border terminal-glow font-mono opacity-50"
+        >
+          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </Button>
+      </div>
+
+      <div className="w-full max-w-md sm:max-w-lg px-4">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center mb-4">
+            <Terminal className="w-8 h-8 text-terminal mr-3" />
+            <h1 className="text-2xl sm:text-3xl font-bold text-terminal font-mono">
+              GPT_ANALYTICS
+            </h1>
+          </div>
+          <p className="text-muted-foreground font-mono text-sm">
+            {'>'} PROCESSING_DATA_STREAM...
+          </p>
+        </div>
+
+        {/* Loading Card */}
+        <Card className="retro-border bg-card terminal-glow">
+          <CardHeader className="text-center border-b border-border">
+            <CardTitle className="text-xl flex items-center justify-center gap-2 font-mono">
+              <Loader2 className="w-5 h-5 text-terminal animate-spin" />
+              ANALYZING_CONVERSATIONS
+            </CardTitle>
+            <CardDescription className="font-mono text-muted-foreground">
+              neural network processing active
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="p-6">
+            {/* Progress Bar */}
+            <div className="space-y-4">
+              <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-terminal transition-all duration-500 relative"
+                  style={{ width: `${progress}%` }}
+                >
+                  <div className="absolute inset-0 shimmer rounded-full" />
+                </div>
+              </div>
+              
+              <div className="text-center space-y-2">
+                <div className="text-lg font-bold text-terminal font-mono">
+                  {progress}%
+                </div>
+                <div className="text-sm text-muted-foreground font-mono">
+                  {message}
+                </div>
+              </div>
+
+              {/* Processing steps */}
+              <div className="mt-6 space-y-2 text-xs font-mono">
+                <div className={`flex items-center gap-2 ${progress > 10 ? 'text-terminal' : 'text-muted-foreground'}`}>
+                  {progress > 10 ? '✓' : '○'} PARSING_JSON_DATA
+                </div>
+                <div className={`flex items-center gap-2 ${progress > 30 ? 'text-terminal' : 'text-muted-foreground'}`}>
+                  {progress > 30 ? '✓' : '○'} EXTRACTING_CONVERSATIONS
+                </div>
+                <div className={`flex items-center gap-2 ${progress > 60 ? 'text-terminal' : 'text-muted-foreground'}`}>
+                  {progress > 60 ? '✓' : '○'} RUNNING_TOPIC_ANALYSIS
+                </div>
+                <div className={`flex items-center gap-2 ${progress > 90 ? 'text-terminal' : 'text-muted-foreground'}`}>
+                  {progress > 90 ? '✓' : '○'} GENERATING_INSIGHTS
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };
@@ -136,7 +226,6 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
-  const [showProgress, setShowProgress] = useState(false);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -160,7 +249,6 @@ export default function Home() {
 
       if (status.error) {
         showError(`PROCESSING_ERROR: ${status.error}`);
-        setShowProgress(false);
         setIsLoading(false);
         return;
       }
@@ -175,7 +263,6 @@ export default function Home() {
       }
     } catch (error) {
       showError('STATUS_CHECK_FAILED: Unable to check processing status');
-      setShowProgress(false);
       setIsLoading(false);
     }
   };
@@ -196,56 +283,53 @@ export default function Home() {
       }
 
       setResults({ topics: topicsData, models: modelsData });
-      setShowProgress(false);
       setIsLoading(false);
     } catch (error) {
-      showError('RESULTS_LOAD_FAILED: Unable to load analysis results');
-      setShowProgress(false);
+      showError('RESULT_LOAD_FAILED: Unable to load analysis results');
       setIsLoading(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!apiKey.trim()) {
-      showError('ERROR_API_KEY_REQUIRED: OpenAI API key is required');
-      return;
-    }
-
+    
     if (!selectedFile) {
-      showError('ERROR_FILE_REQUIRED: ChatGPT conversations JSON file required');
+      showError('FILE_REQUIRED: Please select a ChatGPT conversations file');
       return;
     }
 
     setIsLoading(true);
-    setShowProgress(true);
+    setProgress(0);
+    setStatusMessage('INITIALIZING_ANALYSIS...');
     setError(null);
 
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
+      
+      // Only include API key if provided
+      if (apiKey.trim()) {
+        formData.append('api_key', apiKey);
+      }
 
       const response = await fetch('http://127.0.0.1:8000/upload', {
         method: 'POST',
-        body: formData
+        body: formData,
       });
 
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
+      const result = await response.json();
+
+      if (result.error) {
+        showError(`UPLOAD_ERROR: ${result.error}`);
+        setIsLoading(false);
+        return;
       }
 
-      const result = await response.json();
       setCurrentJobId(result.job_id);
-
-      // Store API key locally
-      localStorage.setItem('openai_api_key', apiKey);
-
       pollStatus(result.job_id);
     } catch (error) {
-      showError(`SYSTEM_ERROR: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      showError('UPLOAD_FAILED: Unable to upload file for analysis');
       setIsLoading(false);
-      setShowProgress(false);
     }
   };
 
@@ -381,6 +465,11 @@ export default function Home() {
 
   if (!mounted) {
     return null; // Avoid hydration mismatch
+  }
+
+  // Show loading screen when processing
+  if (isLoading) {
+    return <LoadingScreen progress={progress} message={statusMessage} theme={theme} />;
   }
 
   if (results) {
@@ -533,18 +622,18 @@ export default function Home() {
                 {/* API Key Input */}
                 <div className="space-y-2">
                   <Label htmlFor="apiKey" className="text-sm font-mono font-medium">
-                    OPENAI_API_KEY:
+                    OPENAI_API_KEY (OPTIONAL):
                   </Label>
                   <Input
                     id="apiKey"
                     type="password"
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="sk-..."
+                    placeholder="sk-... (leave empty for basic analysis)"
                     className="font-mono retro-border bg-muted/30"
                   />
                   <p className="text-xs text-muted-foreground font-mono">
-                    // stored locally, never transmitted
+                    // optional: enables advanced topic analysis
                   </p>
                 </div>
 
@@ -557,17 +646,10 @@ export default function Home() {
                   disabled={isLoading}
                   className="w-full bg-terminal hover:bg-terminal/90 text-black font-mono font-bold retro-border"
                 >
-                  {isLoading ? (
-                    <span className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full spin"></div>
-                      PROCESSING...
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2">
-                      <Terminal className="w-4 h-4" />
-                      INITIALIZE_DASHBOARD
-                    </span>
-                  )}
+                  <span className="flex items-center gap-2">
+                    <Terminal className="w-4 h-4" />
+                    INITIALIZE_DASHBOARD
+                  </span>
                 </Button>
               </form>
 
@@ -577,9 +659,6 @@ export default function Home() {
                   {error}
                 </div>
               )}
-
-              {/* Progress */}
-              <Progress progress={progress} message={statusMessage} visible={showProgress} />
 
               {/* Instructions */}
               <div className="mt-6 p-4 bg-muted/30 retro-border rounded-md">
