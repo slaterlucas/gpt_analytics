@@ -65,6 +65,7 @@
     @apply bg-background text-foreground font-mono;
     font-family: 'JetBrains Mono', monospace;
     cursor: none;
+    overflow-x: hidden;
   }
 
   .font-mono {
@@ -154,6 +155,7 @@
   .container-responsive {
     @apply container mx-auto px-4 sm:px-6 lg:px-8;
     max-width: 100vw;
+    overflow-x: hidden;
   }
 
   .container-responsive-sm {
@@ -169,6 +171,41 @@
   .container-responsive-lg {
     @apply container mx-auto px-4 sm:px-6 lg:px-8;
     max-width: 1024px;
+  }
+
+  /* Prevent horizontal scrolling */
+  .overflow-safe {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  /* Chart responsive sizing */
+  .chart-container {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  /* Responsive grid improvements */
+  .dashboard-grid {
+    display: grid;
+    gap: 1.5rem;
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  @media (min-width: 640px) {
+    .dashboard-grid {
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .dashboard-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 2.5rem;
+    }
   }
 
   /* Custom Cursor System - Inspired by minimal version */

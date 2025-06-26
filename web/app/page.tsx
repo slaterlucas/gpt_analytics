@@ -38,17 +38,30 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, selectedFile }) =
         CHATGPT_CONVERSATIONS.JSON:
       </Label>
       <div className="relative">
-        <Input
+        {/* Hidden file input */}
+        <input
           id="file"
           type="file"
           accept=".json"
           onChange={handleFileChange}
-          className="font-mono retro-border bg-muted/30 file:bg-terminal file:text-black file:border-0 file:rounded-md file:px-3 file:py-1 file:font-mono file:font-bold file:mr-3"
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
         />
-        <Upload className="absolute right-3 top-3 w-4 h-4 text-muted-foreground pointer-events-none" />
+        
+        {/* Custom styled overlay */}
+        <div className="font-mono retro-border bg-muted/30 h-10 px-3 py-2 flex items-center relative">
+          <div className="flex items-center gap-3">
+            <div className="bg-terminal text-black px-3 py-1 rounded-md font-bold text-sm">
+              Choose File
+            </div>
+            <span className="text-muted-foreground text-sm">
+              {selectedFile ? selectedFile.name : 'No file chosen'}
+            </span>
+          </div>
+          <Upload className="absolute right-3 w-4 h-4 text-muted-foreground pointer-events-none" />
+        </div>
       </div>
       {selectedFile && (
-        <p className="text-xs text-terminal font-mono">
+        <p className="text-xs text-terminal font-mono text-center">
           {'>'} {selectedFile.name} [LOADED]
         </p>
       )}
@@ -269,20 +282,22 @@ export default function Home() {
 
   const loadResults = async (jobId: string) => {
     try {
-      const [topicsResponse, modelsResponse] = await Promise.all([
+      const [topicsResponse, modelsResponse, dailyResponse] = await Promise.all([
         fetch(`http://127.0.0.1:8000/topics/${jobId}`),
-        fetch(`http://127.0.0.1:8000/models/${jobId}`)
+        fetch(`http://127.0.0.1:8000/models/${jobId}`),
+        fetch(`http://127.0.0.1:8000/daily/${jobId}`)
       ]);
 
       const topicsData = await topicsResponse.json();
       const modelsData = await modelsResponse.json();
+      const dailyData = await dailyResponse.json();
 
-      if (topicsData.error || modelsData.error) {
-        showError(`DATA_LOAD_ERROR: ${topicsData.error || modelsData.error}`);
+      if (topicsData.error || modelsData.error || dailyData.error) {
+        showError(`DATA_LOAD_ERROR: ${topicsData.error || modelsData.error || dailyData.error}`);
         return;
       }
 
-      setResults({ topics: topicsData, models: modelsData });
+      setResults({ topics: topicsData, models: modelsData, daily: dailyData });
       setIsLoading(false);
     } catch (error) {
       showError('RESULT_LOAD_FAILED: Unable to load analysis results');
@@ -338,21 +353,36 @@ export default function Home() {
       return <p className="text-center text-muted-foreground text-sm font-mono">No topics found in conversations</p>;
     }
 
+    // Responsive chart height based on screen size
+    const getChartHeight = () => {
+      if (typeof window !== 'undefined') {
+        return window.innerWidth < 640 ? 250 : window.innerWidth < 1024 ? 300 : 350;
+      }
+      return 300;
+    };
+
     const options = {
       series: data.series,
       chart: {
         type: 'donut' as const,
-        height: 300,
+        height: getChartHeight(),
         fontFamily: 'JetBrains Mono, monospace',
-        background: 'transparent'
+        background: 'transparent',
+        toolbar: {
+          show: false
+        }
       },
       labels: data.labels,
       legend: {
         position: 'bottom' as const,
         fontFamily: 'JetBrains Mono, monospace',
-        fontSize: '12px',
+        fontSize: '11px',
         labels: {
           colors: [theme === 'dark' ? '#f8fafc' : '#1e293b']
+        },
+        itemMargin: {
+          horizontal: 8,
+          vertical: 4
         }
       },
       plotOptions: {
@@ -367,7 +397,7 @@ export default function Home() {
         enabled: true,
         style: {
           fontFamily: 'JetBrains Mono, monospace',
-          fontSize: '12px',
+          fontSize: '11px',
           colors: [theme === 'dark' ? '#f8fafc' : '#1e293b'],
           fontWeight: 'bold'
         },
@@ -383,10 +413,25 @@ export default function Home() {
       },
       tooltip: {
         theme: theme === 'dark' ? 'dark' : 'light'
-      }
+      },
+      responsive: [{
+        breakpoint: 640,
+        options: {
+          chart: {
+            height: 250
+          },
+          legend: {
+            fontSize: '10px'
+          }
+        }
+      }]
     };
 
-    return <Chart options={options} series={data.series} type="donut" height={300} />;
+    return (
+      <div className="chart-container">
+        <Chart options={options} series={data.series} type="donut" height={getChartHeight()} />
+      </div>
+    );
   };
 
   const createModelsChart = (data: any) => {
@@ -397,21 +442,36 @@ export default function Home() {
     const series = data.models.map((m: any) => m.percentage);
     const labels = data.models.map((m: any) => m.model);
 
+    // Responsive chart height based on screen size
+    const getChartHeight = () => {
+      if (typeof window !== 'undefined') {
+        return window.innerWidth < 640 ? 250 : window.innerWidth < 1024 ? 300 : 350;
+      }
+      return 300;
+    };
+
     const options = {
       series: series,
       chart: {
         type: 'donut' as const,
-        height: 300,
+        height: getChartHeight(),
         fontFamily: 'JetBrains Mono, monospace',
-        background: 'transparent'
+        background: 'transparent',
+        toolbar: {
+          show: false
+        }
       },
       labels: labels,
       legend: {
         position: 'bottom' as const,
         fontFamily: 'JetBrains Mono, monospace',
-        fontSize: '12px',
+        fontSize: '11px',
         labels: {
           colors: [theme === 'dark' ? '#f8fafc' : '#1e293b']
+        },
+        itemMargin: {
+          horizontal: 8,
+          vertical: 4
         }
       },
       plotOptions: {
@@ -426,7 +486,7 @@ export default function Home() {
         enabled: true,
         style: {
           fontFamily: 'JetBrains Mono, monospace',
-          fontSize: '12px',
+          fontSize: '11px',
           colors: [theme === 'dark' ? '#f8fafc' : '#1e293b'],
           fontWeight: 'bold'
         },
@@ -442,22 +502,193 @@ export default function Home() {
       },
       tooltip: {
         theme: theme === 'dark' ? 'dark' : 'light'
-      }
+      },
+      responsive: [{
+        breakpoint: 640,
+        options: {
+          chart: {
+            height: 250
+          },
+          legend: {
+            fontSize: '10px'
+          }
+        }
+      }]
     };
 
     return (
-      <div>
-        <Chart options={options} series={series} type="donut" height={300} />
+      <div className="chart-container">
+        <Chart options={options} series={series} type="donut" height={getChartHeight()} />
         <div className="mt-4 max-h-60 overflow-y-auto retro-scroll">
           {data.models.map((model: any, index: number) => (
             <div key={index} className="flex justify-between items-center p-3 mb-2 bg-muted/30 retro-border rounded-md hover:bg-terminal/5 transition-colors">
-              <div className="font-semibold text-sm font-mono">{model.model}</div>
-              <div className="text-right">
+              <div className="font-semibold text-sm font-mono truncate mr-2">{model.model}</div>
+              <div className="text-right flex-shrink-0">
                 <div className="font-bold text-terminal font-mono">{model.percentage}%</div>
                 <div className="text-xs text-muted-foreground font-mono">{model.count} requests</div>
               </div>
             </div>
           ))}
+        </div>
+      </div>
+    );
+  };
+
+  const createDailyChart = (data: any) => {
+    if (!data.dates || data.dates.length === 0) {
+      return <p className="text-center text-muted-foreground text-sm font-mono">No daily activity data found</p>;
+    }
+
+    // Responsive chart height based on screen size
+    const getChartHeight = () => {
+      if (typeof window !== 'undefined') {
+        return window.innerWidth < 640 ? 250 : window.innerWidth < 1024 ? 300 : 350;
+      }
+      return 300;
+    };
+
+    const options = {
+      series: [{
+        name: 'Messages',
+        data: data.counts
+      }],
+      chart: {
+        type: 'area' as const,
+        height: getChartHeight(),
+        fontFamily: 'JetBrains Mono, monospace',
+        background: 'transparent',
+        toolbar: {
+          show: false
+        },
+        zoom: {
+          enabled: true,
+          type: 'x' as const
+        }
+      },
+      xaxis: {
+        categories: data.dates,
+        labels: {
+          style: {
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '10px',
+            colors: [theme === 'dark' ? '#94a3b8' : '#64748b']
+          },
+          rotate: -45,
+          formatter: function(value: string) {
+            // Format date to show only month/day for cleaner display
+            const date = new Date(value);
+            return `${date.getMonth() + 1}/${date.getDate()}`;
+          }
+        },
+        axisBorder: {
+          color: theme === 'dark' ? '#334155' : '#e2e8f0'
+        },
+        axisTicks: {
+          color: theme === 'dark' ? '#334155' : '#e2e8f0'
+        }
+      },
+      yaxis: {
+        labels: {
+          style: {
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '10px',
+            colors: [theme === 'dark' ? '#94a3b8' : '#64748b']
+          }
+        },
+        axisBorder: {
+          color: theme === 'dark' ? '#334155' : '#e2e8f0'
+        }
+      },
+      fill: {
+        type: 'gradient',
+        gradient: {
+          shadeIntensity: 1,
+          opacityFrom: 0.4,
+          opacityTo: 0.1,
+          stops: [0, 100],
+          colorStops: [
+            {
+              offset: 0,
+              color: 'hsl(120 100% 50%)',
+              opacity: 0.4
+            },
+            {
+              offset: 100,
+              color: 'hsl(120 100% 50%)',
+              opacity: 0.1
+            }
+          ]
+        }
+      },
+      stroke: {
+        curve: 'smooth' as const,
+        width: 2,
+        colors: ['hsl(120 100% 50%)']
+      },
+      dataLabels: {
+        enabled: false
+      },
+      grid: {
+        borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
+        strokeDashArray: 3,
+        xaxis: {
+          lines: {
+            show: true
+          }
+        },
+        yaxis: {
+          lines: {
+            show: true
+          }
+        }
+      },
+      tooltip: {
+        theme: theme === 'dark' ? 'dark' : 'light',
+        style: {
+          fontFamily: 'JetBrains Mono, monospace'
+        },
+        x: {
+          formatter: function(value: any) {
+            const date = new Date(data.dates[value - 1]);
+            return date.toLocaleDateString();
+          }
+        }
+      },
+      responsive: [{
+        breakpoint: 640,
+        options: {
+          chart: {
+            height: 250
+          },
+          xaxis: {
+            labels: {
+              fontSize: '9px'
+            }
+          }
+        }
+      }]
+    };
+
+    return (
+      <div className="chart-container">
+        <Chart options={options} series={options.series} type="area" height={getChartHeight()} />
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono">
+          <div className="bg-muted/30 retro-border rounded-md p-3 text-center">
+            <div className="text-terminal font-bold">{data.total_days}</div>
+            <div className="text-muted-foreground">ACTIVE_DAYS</div>
+          </div>
+          <div className="bg-muted/30 retro-border rounded-md p-3 text-center">
+            <div className="text-terminal font-bold">{data.avg_per_day}</div>
+            <div className="text-muted-foreground">AVG_PER_DAY</div>
+          </div>
+          <div className="bg-muted/30 retro-border rounded-md p-3 text-center">
+            <div className="text-terminal font-bold">{data.peak_count}</div>
+            <div className="text-muted-foreground">PEAK_DAY</div>
+          </div>
+          <div className="bg-muted/30 retro-border rounded-md p-3 text-center">
+            <div className="text-terminal font-bold">{data.total_messages}</div>
+            <div className="text-muted-foreground">TOTAL_MSGS</div>
+          </div>
         </div>
       </div>
     );
@@ -475,7 +706,7 @@ export default function Home() {
   if (results) {
     return (
       <div className="min-h-screen bg-background">
-        {/* Theme toggle */}
+        {/* Theme toggle - back to top right */}
         <div className="absolute top-4 right-4 z-20">
           <Button
             variant="outline"
@@ -487,12 +718,12 @@ export default function Home() {
           </Button>
         </div>
 
-        <div className="container-responsive py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Header */}
           <div className="mb-8 text-center">
             <div className="flex items-center justify-center mb-4">
               <Terminal className="w-8 h-8 text-terminal mr-3" />
-              <h1 className="text-3xl font-bold text-terminal font-mono">
+              <h1 className="text-2xl sm:text-3xl font-bold text-terminal font-mono">
                 GPT_ANALYTICS_DASHBOARD
               </h1>
             </div>
@@ -536,8 +767,8 @@ export default function Home() {
             />
           </div>
 
-          {/* Charts Grid */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 lg:gap-8">
+          {/* Charts Grid - improved responsive layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             <ChartCard
               title="TOPIC_DISTRIBUTION"
               description="conversation topics analyzed"
@@ -555,8 +786,19 @@ export default function Home() {
             </ChartCard>
           </div>
 
+          {/* Daily Activity Chart - Full Width */}
+          <div className="mb-8">
+            <ChartCard
+              title="DAILY_MESSAGE_ACTIVITY"
+              description="messages per day over time"
+              icon={Clock}
+            >
+              {createDailyChart(results.daily)}
+            </ChartCard>
+          </div>
+
           {/* Reset button */}
-          <div className="mt-8 text-center">
+          <div className="text-center">
             <Button
               variant="outline"
               onClick={() => {
@@ -578,7 +820,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Theme toggle */}
+      {/* Theme toggle - back to top right */}
       <div className="absolute top-4 right-4 z-20">
         <Button
           variant="outline"

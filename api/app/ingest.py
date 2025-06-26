@@ -1,8 +1,9 @@
 import json
 import re
 from pathlib import Path
-from collections import Counter
+from collections import Counter, defaultdict
 import traceback
+from datetime import datetime, timezone
 
 def job_status(jid: str, jobs: dict):
     """Get job status"""
@@ -17,6 +18,7 @@ def extract_messages_and_models(file_path: Path):
     conversation_count = 0
     total_messages = 0
     content_types = Counter()
+    daily_messages = defaultdict(int)  # Track messages per day
     
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -46,6 +48,7 @@ def extract_messages_and_models(file_path: Path):
                 author = message.get('author', {})
                 role = author.get('role')
                 content = message.get('content', {})
+                create_time = message.get('create_time')
                 
                 # Skip system messages that are empty or hidden
                 metadata = message.get('metadata', {})
@@ -53,6 +56,16 @@ def extract_messages_and_models(file_path: Path):
                     continue
                 
                 total_messages += 1
+                
+                # Track daily message counts
+                if create_time:
+                    try:
+                        # Convert Unix timestamp to date string
+                        dt = datetime.fromtimestamp(create_time, tz=timezone.utc)
+                        date_str = dt.strftime('%Y-%m-%d')
+                        daily_messages[date_str] += 1
+                    except (ValueError, TypeError):
+                        pass  # Skip invalid timestamps
                 
                 # Extract ALL content types and text
                 extracted_text = extract_all_content(content, content_types)
@@ -74,7 +87,7 @@ def extract_messages_and_models(file_path: Path):
         print(f"Error parsing file: {e}")
         traceback.print_exc()
     
-    return messages, model_usage, conversation_count, total_messages, content_types
+    return messages, model_usage, conversation_count, total_messages, content_types, daily_messages
 
 def extract_all_content(content, content_types):
     """Extract text from all possible content types"""
@@ -293,7 +306,7 @@ def ingest_stream(file_path: Path, job_id: str, jobs: dict):
         jobs[job_id]["progress"] = 10
         
         # Extract everything from the JSON
-        messages, model_usage, conversation_count, total_messages, content_types = extract_messages_and_models(file_path)
+        messages, model_usage, conversation_count, total_messages, content_types, daily_messages = extract_messages_and_models(file_path)
         
         if not messages:
             jobs[job_id]["error"] = "No messages found in file"
@@ -316,7 +329,8 @@ def ingest_stream(file_path: Path, job_id: str, jobs: dict):
             "total_messages": total_messages,
             "content_types": dict(content_types),
             "user_messages": len([m for m in messages if m.startswith('[user]')]),
-            "assistant_messages": len([m for m in messages if m.startswith('[assistant]')])
+            "assistant_messages": len([m for m in messages if m.startswith('[assistant]')]),
+            "daily_messages": dict(daily_messages)  # Add daily message data
         }
         jobs[job_id]["ready"] = True
         jobs[job_id]["message_count"] = len(messages)
@@ -377,4 +391,56 @@ def model_stats(job_id: str, jobs: dict):
         "user_messages": result.get("user_messages", 0),
         "assistant_messages": result.get("assistant_messages", 0),
         "content_types": result.get("content_types", {})
+    }
+
+def daily_activity(job_id: str, jobs: dict):
+    """Get daily message activity for time series chart"""
+    if job_id not in jobs:
+        return {"error": "Job not found"}
+    
+    job = jobs[job_id]
+    if not job.get("ready"):
+        return {"error": "Job not ready"}
+    
+    if job.get("error"):
+        return {"error": job["error"]}
+    
+    result = job.get("result", {})
+    daily_data = result.get("daily_messages", {})
+    
+    if not daily_data:
+        return {
+            "dates": [],
+            "counts": [],
+            "total_days": 0,
+            "avg_per_day": 0,
+            "peak_day": None,
+            "peak_count": 0
+        }
+    
+    # Sort dates and prepare data for chart
+    sorted_dates = sorted(daily_data.keys())
+    dates = sorted_dates
+    counts = [daily_data[date] for date in sorted_dates]
+    
+    # Calculate statistics
+    total_days = len(dates)
+    total_messages = sum(counts)
+    avg_per_day = round(total_messages / total_days, 1) if total_days > 0 else 0
+    
+    # Find peak day
+    peak_count = max(counts) if counts else 0
+    peak_day = None
+    if peak_count > 0:
+        peak_index = counts.index(peak_count)
+        peak_day = dates[peak_index]
+    
+    return {
+        "dates": dates,
+        "counts": counts,
+        "total_days": total_days,
+        "avg_per_day": avg_per_day,
+        "peak_day": peak_day,
+        "peak_count": peak_count,
+        "total_messages": total_messages
     } 

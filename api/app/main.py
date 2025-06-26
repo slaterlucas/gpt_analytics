@@ -2,7 +2,7 @@ from fastapi import FastAPI, UploadFile, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from uuid import uuid4
 from pathlib import Path
-from .ingest import ingest_stream, topic_pie, job_status, model_stats
+from .ingest import ingest_stream, topic_pie, job_status, model_stats, daily_activity
 import json
 
 app = FastAPI(title="ChatGPT Analytics API")
@@ -53,6 +53,11 @@ def topics(jid: str):
 def models(jid: str):
     """Get model usage statistics"""
     return model_stats(jid, JOBS)
+
+@app.get("/daily/{jid}")
+def daily(jid: str):
+    """Get daily message activity for time series chart"""
+    return daily_activity(jid, JOBS)
 
 @app.get("/health")
 def health():
