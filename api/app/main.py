@@ -1,9 +1,10 @@
-from fastapi import FastAPI, UploadFile, BackgroundTasks
+from fastapi import FastAPI, UploadFile, BackgroundTasks, Form
 from fastapi.middleware.cors import CORSMiddleware
 from uuid import uuid4
 from pathlib import Path
 from .ingest import ingest_stream, topic_pie, job_status, model_stats, daily_activity
 import json
+from typing import Optional
 
 app = FastAPI(title="ChatGPT Analytics API")
 
@@ -21,7 +22,7 @@ DATA.mkdir(exist_ok=True)
 JOBS = {}
 
 @app.post("/upload")
-async def upload(file: UploadFile, bg: BackgroundTasks):
+async def upload(file: UploadFile, bg: BackgroundTasks, api_key: Optional[str] = Form(None)):
     """Upload ChatGPT export JSON and start background analysis"""
     jid = uuid4().hex
     path = DATA / f"{jid}.json"
@@ -34,8 +35,8 @@ async def upload(file: UploadFile, bg: BackgroundTasks):
     # Initialize job tracking
     JOBS[jid] = {"progress": 0, "ready": False, "error": None}
     
-    # Start background processing
-    bg.add_task(ingest_stream, path, jid, JOBS)
+    # Start background processing with optional API key
+    bg.add_task(ingest_stream, path, jid, JOBS, api_key)
     
     return {"job_id": jid}
 
@@ -62,4 +63,9 @@ def daily(jid: str):
 @app.get("/health")
 def health():
     """Health check endpoint"""
-    return {"status": "ok"} 
+    return {"status": "ok"}
+
+@app.get("/debug/jobs")
+def debug_jobs():
+    """Debug endpoint to see all jobs"""
+    return {"jobs": JOBS} 
