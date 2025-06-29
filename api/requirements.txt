@@ -6,4 +6,7 @@ duckdb
 faiss-cpu
 bertopic
 python-dotenv
-sentence-transformers 
+sentence-transformers
+openai
+scikit-learn 
+tiktoken

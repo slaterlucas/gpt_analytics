@@ -17,6 +17,7 @@ def extract_messages_and_models(file_path: Path):
     conversation_count = 0
     total_messages = 0
     content_types = Counter()
+    conversation_titles = []  # NEW: Store titles for topic analysis
     
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -37,6 +38,11 @@ def extract_messages_and_models(file_path: Path):
                 continue
                 
             conversation_count += 1
+            
+            # NEW: Extract conversation title for topic analysis
+            title = conv.get('title', '').strip()
+            if title and title != 'Untitled' and len(title) > 3:
+                conversation_titles.append(title)
             
             for node_id, node in conv['mapping'].items():
                 if not node or 'message' not in node or not node['message']:
@@ -74,7 +80,7 @@ def extract_messages_and_models(file_path: Path):
         print(f"Error parsing file: {e}")
         traceback.print_exc()
     
-    return messages, model_usage, conversation_count, total_messages, content_types
+    return messages, model_usage, conversation_count, total_messages, content_types, conversation_titles
 
 def extract_all_content(content, content_types):
     """Extract text from all possible content types"""
@@ -206,46 +212,69 @@ def analyze_model_usage(model_usage):
     
     return model_stats
 
-def simple_topic_analysis(messages, job_id: str, jobs: dict):
-    """Enhanced topic analysis that handles all content types"""
-    if not messages:
-        return {"topics": [], "message": "No messages found"}
+def simple_topic_analysis(messages, job_id: str, jobs: dict, conversation_titles=None):
+    """Enhanced topic analysis that handles all content types - TITLE-BASED for efficiency"""
+    
+    # NEW: Use conversation titles instead of full messages for topic analysis
+    if conversation_titles and len(conversation_titles) > 0:
+        # Use conversation titles directly for topic analysis
+        all_text = conversation_titles
+        print(f"DEBUG: Using {len(all_text)} conversation titles for topic analysis")
+        combined_text = ' '.join(all_text).lower()
+        mode_suffix = " (Title-Based)"
+    else:
+        # Fallback to message content if no titles available
+        if not messages:
+            return {"topics": [], "message": "No messages or titles found"}
+        
+        jobs[job_id]["progress"] = 20
+        
+        # Combine all messages, but clean them better
+        all_text = []
+        for msg in messages:
+            # Remove role prefixes for analysis but keep the content
+            cleaned_msg = re.sub(r'^\[.*?\]\s*', '', msg)
+            # Remove special markers but keep the content
+            cleaned_msg = re.sub(r'\[.*?:\s*', '', cleaned_msg)
+            cleaned_msg = re.sub(r'\]', '', cleaned_msg)
+            if len(cleaned_msg.strip()) > 10:  # Keep longer messages
+                all_text.append(cleaned_msg.lower())
+        
+        combined_text = ' '.join(all_text)
+        print(f"DEBUG: Using {len(all_text)} message documents for topic analysis")
+        mode_suffix = " (Message-Based)"
     
     jobs[job_id]["progress"] = 20
     
-    # Combine all messages, but clean them better
-    all_text = []
-    for msg in messages:
-        # Remove role prefixes for analysis but keep the content
-        cleaned_msg = re.sub(r'^\[.*?\]\s*', '', msg)
-        # Remove special markers but keep the content
-        cleaned_msg = re.sub(r'\[.*?:\s*', '', cleaned_msg)
-        cleaned_msg = re.sub(r'\]', '', cleaned_msg)
-        if len(cleaned_msg.strip()) > 10:  # Keep longer messages
-            all_text.append(cleaned_msg.lower())
-    
-    combined_text = ' '.join(all_text)
-    
-    # Enhanced stop words list
-    stop_words = {
-        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 
-        'of', 'with', 'by', 'from', 'up', 'about', 'into', 'through', 'during',
-        'before', 'after', 'above', 'below', 'over', 'under', 'again', 'further',
-        'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all',
-        'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such',
-        'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very',
-        'can', 'will', 'just', 'should', 'now', 'could', 'would', 'like', 'get',
-        'know', 'think', 'see', 'make', 'go', 'come', 'take', 'use', 'find',
-        'give', 'tell', 'ask', 'work', 'seem', 'feel', 'try', 'leave', 'call',
-        'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
-        'my', 'your', 'his', 'her', 'its', 'our', 'their', 'this', 'that', 'these', 'those',
-        'user', 'assistant', 'system', 'thought', 'code', 'image', 'attachment'  # ChatGPT specific
-    }
+    # For titles, use simpler stop words since titles are already concise
+    if conversation_titles:
+        stop_words = {
+            'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 
+            'of', 'with', 'by', 'from', 'up', 'about', 'how', 'what', 'why', 'when', 
+            'where', 'can', 'will', 'should', 'could', 'would', 'like', 'get', 'make', 
+            'use', 'help', 'new', 'my', 'your', 'this', 'that'
+        }
+    else:
+        # Enhanced stop words list for message content
+        stop_words = {
+            'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 
+            'of', 'with', 'by', 'from', 'up', 'about', 'into', 'through', 'during',
+            'before', 'after', 'above', 'below', 'over', 'under', 'again', 'further',
+            'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all',
+            'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such',
+            'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very',
+            'can', 'will', 'just', 'should', 'now', 'could', 'would', 'like', 'get',
+            'know', 'think', 'see', 'make', 'go', 'come', 'take', 'use', 'find',
+            'give', 'tell', 'ask', 'work', 'seem', 'feel', 'try', 'leave', 'call',
+            'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
+            'my', 'your', 'his', 'her', 'its', 'our', 'their', 'this', 'that', 'these', 'those',
+            'user', 'assistant', 'system', 'thought', 'code', 'image', 'attachment'  # ChatGPT specific
+        }
     
     jobs[job_id]["progress"] = 50
     
     # Extract meaningful terms - more inclusive
-    words = re.findall(r'\b[a-zA-Z]{3,}\b', combined_text)  # 3+ characters instead of 4+
+    words = re.findall(r'\b[a-zA-Z]{3,}\b', combined_text)
     meaningful_words = [w for w in words if w not in stop_words and len(w) > 2]
     
     # Also extract key phrases (2-3 word combinations)
@@ -285,7 +314,7 @@ def simple_topic_analysis(messages, job_id: str, jobs: dict):
     
     jobs[job_id]["progress"] = 100
     
-    return {"topics": topics}
+    return {"topics": topics, "mode": f"simple{mode_suffix}"}
 
 def ingest_stream(file_path: Path, job_id: str, jobs: dict):
     """Background task to process uploaded file - COMPREHENSIVE analysis"""
@@ -293,16 +322,16 @@ def ingest_stream(file_path: Path, job_id: str, jobs: dict):
         jobs[job_id]["progress"] = 10
         
         # Extract everything from the JSON
-        messages, model_usage, conversation_count, total_messages, content_types = extract_messages_and_models(file_path)
+        messages, model_usage, conversation_count, total_messages, content_types, conversation_titles = extract_messages_and_models(file_path)
         
         if not messages:
             jobs[job_id]["error"] = "No messages found in file"
             jobs[job_id]["ready"] = True
             return
         
-        # Analyze topics
+        # Analyze topics using titles when available
         jobs[job_id]["progress"] = 40
-        topic_result = simple_topic_analysis(messages, job_id, jobs)
+        topic_result = simple_topic_analysis(messages, job_id, jobs, conversation_titles)
         
         # Analyze model usage
         jobs[job_id]["progress"] = 80
@@ -311,6 +340,7 @@ def ingest_stream(file_path: Path, job_id: str, jobs: dict):
         # Store comprehensive results
         jobs[job_id]["result"] = {
             "topics": topic_result["topics"],
+            "topic_mode": topic_result.get("mode", "simple"),
             "models": model_stats,
             "conversation_count": conversation_count,
             "total_messages": total_messages,

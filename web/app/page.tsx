@@ -116,39 +116,75 @@ const LoadingScreen: React.FC<{ progress: number; message: string; theme: string
           </CardHeader>
 
           <CardContent className="p-6">
-            {/* Progress Bar */}
-            <div className="space-y-4">
-              <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-terminal transition-all duration-500 relative"
-                  style={{ width: `${progress}%` }}
-                >
-                  <div className="absolute inset-0 shimmer rounded-full" />
+            {/* Processing steps */}
+            <div className="space-y-3 text-sm font-mono">
+              <div className={`flex items-center justify-between ${progress > 0 ? 'text-terminal' : 'text-muted-foreground'}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-current"></div>
+                  INITIALIZING_ANALYSIS
+                </div>
+                <div className="flex items-center">
+                  {progress > 0 ? (
+                    <span className="text-xs opacity-70">✓</span>
+                  ) : progress === 0 && (
+                    <Loader2 className="w-3 h-3 animate-spin opacity-50" />
+                  )}
                 </div>
               </div>
               
-              <div className="text-center space-y-2">
-                <div className="text-lg font-bold text-terminal font-mono">
-                  {progress}%
+              <div className={`flex items-center justify-between ${progress > 10 ? 'text-terminal' : 'text-muted-foreground'}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-current"></div>
+                  PARSING_JSON_DATA
                 </div>
-                <div className="text-sm text-muted-foreground font-mono">
-                  {message}
+                <div className="flex items-center">
+                  {progress > 10 ? (
+                    <span className="text-xs opacity-70">✓</span>
+                  ) : progress > 0 && progress <= 10 && (
+                    <Loader2 className="w-3 h-3 animate-spin opacity-50" />
+                  )}
                 </div>
               </div>
-
-              {/* Processing steps */}
-              <div className="mt-6 space-y-2 text-xs font-mono">
-                <div className={`flex items-center gap-2 ${progress > 10 ? 'text-terminal' : 'text-muted-foreground'}`}>
-                  {progress > 10 ? '✓' : '○'} PARSING_JSON_DATA
+              
+              <div className={`flex items-center justify-between ${progress > 30 ? 'text-terminal' : 'text-muted-foreground'}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-current"></div>
+                  EXTRACTING_CONVERSATIONS
                 </div>
-                <div className={`flex items-center gap-2 ${progress > 30 ? 'text-terminal' : 'text-muted-foreground'}`}>
-                  {progress > 30 ? '✓' : '○'} EXTRACTING_CONVERSATIONS
+                <div className="flex items-center">
+                  {progress > 30 ? (
+                    <span className="text-xs opacity-70">✓</span>
+                  ) : progress > 10 && progress <= 30 && (
+                    <Loader2 className="w-3 h-3 animate-spin opacity-50" />
+                  )}
                 </div>
-                <div className={`flex items-center gap-2 ${progress > 60 ? 'text-terminal' : 'text-muted-foreground'}`}>
-                  {progress > 60 ? '✓' : '○'} RUNNING_TOPIC_ANALYSIS
+              </div>
+              
+              <div className={`flex items-center justify-between ${progress > 60 ? 'text-terminal' : 'text-muted-foreground'}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-current"></div>
+                  RUNNING_TOPIC_ANALYSIS
                 </div>
-                <div className={`flex items-center gap-2 ${progress > 90 ? 'text-terminal' : 'text-muted-foreground'}`}>
-                  {progress > 90 ? '✓' : '○'} GENERATING_INSIGHTS
+                <div className="flex items-center">
+                  {progress > 60 ? (
+                    <span className="text-xs opacity-70">✓</span>
+                  ) : progress > 30 && progress <= 60 && (
+                    <Loader2 className="w-3 h-3 animate-spin opacity-50" />
+                  )}
+                </div>
+              </div>
+              
+              <div className={`flex items-center justify-between ${progress > 90 ? 'text-terminal' : 'text-muted-foreground'}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-current"></div>
+                  GENERATING_INSIGHTS
+                </div>
+                <div className="flex items-center">
+                  {progress > 90 ? (
+                    <span className="text-xs opacity-70">✓</span>
+                  ) : progress > 60 && progress <= 90 && (
+                    <Loader2 className="w-3 h-3 animate-spin opacity-50" />
+                  )}
                 </div>
               </div>
             </div>
@@ -257,24 +293,30 @@ export default function Home() {
 
   const pollStatus = async (jobId: string) => {
     try {
+      console.log(`DEBUG: Polling status for job ${jobId}`);
       const response = await fetch(`http://127.0.0.1:8000/status/${jobId}`);
       const status = await response.json();
+      console.log(`DEBUG: Status response:`, status);
 
       if (status.error) {
+        console.log(`DEBUG: Error in status:`, status.error);
         showError(`PROCESSING_ERROR: ${status.error}`);
         setIsLoading(false);
         return;
       }
 
+      console.log(`DEBUG: Progress: ${status.progress}, Ready: ${status.ready}`);
       setProgress(status.progress || 0);
-      setStatusMessage(status.ready ? 'ANALYSIS_COMPLETE' : `PROCESSING_DATA... ${status.progress || 0}%`);
 
       if (status.ready) {
+        console.log(`DEBUG: Job ready, loading results...`);
         await loadResults(jobId);
       } else {
+        console.log(`DEBUG: Job not ready, polling again in 2s...`);
         setTimeout(() => pollStatus(jobId), 2000);
       }
     } catch (error) {
+      console.log(`DEBUG: Polling error:`, error);
       showError('STATUS_CHECK_FAILED: Unable to check processing status');
       setIsLoading(false);
     }
@@ -313,9 +355,9 @@ export default function Home() {
       return;
     }
 
+    console.log(`DEBUG: Starting upload for file:`, selectedFile.name);
     setIsLoading(true);
     setProgress(0);
-    setStatusMessage('INITIALIZING_ANALYSIS...');
     setError(null);
 
     try {
@@ -324,25 +366,33 @@ export default function Home() {
       
       // Only include API key if provided
       if (apiKey.trim()) {
+        console.log(`DEBUG: Including API key in upload`);
         formData.append('api_key', apiKey);
+      } else {
+        console.log(`DEBUG: No API key provided, using simple analysis`);
       }
 
+      console.log(`DEBUG: Uploading to backend...`);
       const response = await fetch('http://127.0.0.1:8000/upload', {
         method: 'POST',
         body: formData,
       });
 
       const result = await response.json();
+      console.log(`DEBUG: Upload response:`, result);
 
       if (result.error) {
+        console.log(`DEBUG: Upload error:`, result.error);
         showError(`UPLOAD_ERROR: ${result.error}`);
         setIsLoading(false);
         return;
       }
 
+      console.log(`DEBUG: Upload successful, job ID: ${result.job_id}`);
       setCurrentJobId(result.job_id);
       pollStatus(result.job_id);
     } catch (error) {
+      console.log(`DEBUG: Upload failed:`, error);
       showError('UPLOAD_FAILED: Unable to upload file for analysis');
       setIsLoading(false);
     }
@@ -353,13 +403,20 @@ export default function Home() {
       return <p className="text-center text-muted-foreground text-sm font-mono">No topics found in conversations</p>;
     }
 
-    // Responsive chart height based on screen size
+    // Responsive chart height based on screen size - LARGER for topics chart to match models section total height
     const getChartHeight = () => {
       if (typeof window !== 'undefined') {
-        return window.innerWidth < 640 ? 250 : window.innerWidth < 1024 ? 300 : 350;
+        return window.innerWidth < 640 ? 400 : window.innerWidth < 1024 ? 500 : 600;
       }
-      return 300;
+      return 500;
     };
+
+    // More robust theme detection with fallback
+    const isDarkMode = theme === 'dark' || (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const legendTextColor = isDarkMode ? '#ffffff' : '#000000'; // Pure white/black for maximum contrast
+    const dataLabelColor = isDarkMode ? '#ffffff' : '#000000';
+    
+    console.log('DEBUG: Theme =', theme, 'isDarkMode =', isDarkMode, 'legendTextColor =', legendTextColor);
 
     const options = {
       series: data.series,
@@ -368,8 +425,17 @@ export default function Home() {
         height: getChartHeight(),
         fontFamily: 'JetBrains Mono, monospace',
         background: 'transparent',
-        toolbar: {
-          show: false
+        toolbar: { 
+          show: true, // Enable toolbar for zoom controls
+          tools: {
+            download: true,
+            selection: true,
+            zoom: true,
+            zoomin: true,
+            zoomout: true,
+            pan: true,
+            reset: true
+          }
         }
       },
       labels: data.labels,
@@ -378,7 +444,8 @@ export default function Home() {
         fontFamily: 'JetBrains Mono, monospace',
         fontSize: '11px',
         labels: {
-          colors: [theme === 'dark' ? '#f8fafc' : '#1e293b']
+          colors: legendTextColor, // Use explicit color
+          useSeriesColors: false
         },
         itemMargin: {
           horizontal: 8,
@@ -398,17 +465,20 @@ export default function Home() {
         style: {
           fontFamily: 'JetBrains Mono, monospace',
           fontSize: '11px',
-          colors: [theme === 'dark' ? '#f8fafc' : '#1e293b'],
+          colors: [dataLabelColor],
           fontWeight: 'bold'
         },
         background: {
           enabled: true,
-          foreColor: theme === 'dark' ? '#1e293b' : '#f8fafc',
-          borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
+          foreColor: isDarkMode ? '#000000' : '#ffffff', // Opposite of text color for contrast
+          borderColor: isDarkMode ? '#334155' : '#e2e8f0',
           borderWidth: 1,
           borderRadius: 4,
           padding: 4,
           opacity: 0.9
+        },
+        formatter: function(val: number) {
+          return val.toFixed(1) + '%';
         }
       },
       tooltip: {
@@ -418,7 +488,7 @@ export default function Home() {
         breakpoint: 640,
         options: {
           chart: {
-            height: 250
+            height: 400
           },
           legend: {
             fontSize: '10px'
@@ -429,7 +499,13 @@ export default function Home() {
 
     return (
       <div className="chart-container">
-        <Chart options={options} series={data.series} type="donut" height={getChartHeight()} />
+        <Chart 
+          key={`topics-chart-${theme}`} 
+          options={options} 
+          series={data.series} 
+          type="donut" 
+          height={getChartHeight()} 
+        />
       </div>
     );
   };
@@ -457,8 +533,17 @@ export default function Home() {
         height: getChartHeight(),
         fontFamily: 'JetBrains Mono, monospace',
         background: 'transparent',
-        toolbar: {
-          show: false
+        toolbar: { 
+          show: true, // Enable toolbar for zoom controls
+          tools: {
+            download: true,
+            selection: true,
+            zoom: true,
+            zoomin: true,
+            zoomout: true,
+            pan: true,
+            reset: true
+          }
         }
       },
       labels: labels,
@@ -467,7 +552,8 @@ export default function Home() {
         fontFamily: 'JetBrains Mono, monospace',
         fontSize: '11px',
         labels: {
-          colors: [theme === 'dark' ? '#f8fafc' : '#1e293b']
+          colors: theme === 'dark' ? '#f8fafc' : '#1e293b',
+          useSeriesColors: false
         },
         itemMargin: {
           horizontal: 8,
@@ -518,7 +604,13 @@ export default function Home() {
 
     return (
       <div className="chart-container">
-        <Chart options={options} series={series} type="donut" height={getChartHeight()} />
+        <Chart 
+          key={`models-chart-${theme}`}
+          options={options} 
+          series={series} 
+          type="donut" 
+          height={getChartHeight()} 
+        />
         <div className="mt-4 max-h-60 overflow-y-auto retro-scroll">
           {data.models.map((model: any, index: number) => (
             <div key={index} className="flex justify-between items-center p-3 mb-2 bg-muted/30 retro-border rounded-md hover:bg-terminal/5 transition-colors">
@@ -539,6 +631,43 @@ export default function Home() {
       return <p className="text-center text-muted-foreground text-sm font-mono">No daily activity data found</p>;
     }
 
+    // Debug: log the date data to understand the issue
+    console.log('DEBUG: Daily chart data:', { dates: data.dates.slice(0, 5), counts: data.counts.slice(0, 5) });
+
+    // Convert to timestamp series for a true datetime axis with robust date parsing
+    const seriesData: { x: number; y: number }[] = [];
+    
+    data.dates.forEach((d: string, i: number) => {
+      // Parse date string more robustly
+      let timestamp;
+      try {
+        // Handle YYYY-MM-DD format specifically
+        if (typeof d === 'string' && d.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          // Parse as UTC to avoid timezone issues
+          const date = new Date(d + 'T00:00:00.000Z');
+          timestamp = date.getTime();
+        } else {
+          // Fallback to regular Date parsing
+          timestamp = new Date(d).getTime();
+        }
+        
+        // Check if timestamp is valid
+        if (isNaN(timestamp)) {
+          console.warn('Invalid timestamp for date:', d);
+          return;
+        }
+        
+        seriesData.push({
+          x: timestamp,
+          y: data.counts[i]
+        });
+      } catch (error) {
+        console.warn('Error parsing date:', d, error);
+      }
+    });
+
+    console.log('DEBUG: Parsed series data:', seriesData.slice(0, 5));
+
     // Responsive chart height based on screen size
     const getChartHeight = () => {
       if (typeof window !== 'undefined') {
@@ -548,43 +677,99 @@ export default function Home() {
     };
 
     const options = {
-      series: [{
-        name: 'Messages',
-        data: data.counts
-      }],
+      series: [{ name: 'Messages', data: seriesData }],
       chart: {
         type: 'area' as const,
         height: getChartHeight(),
         fontFamily: 'JetBrains Mono, monospace',
         background: 'transparent',
-        toolbar: {
-          show: false
+        toolbar: { 
+          show: true, // Enable toolbar for zoom controls
+          tools: {
+            download: true,
+            selection: true,
+            zoom: true,
+            zoomin: true,
+            zoomout: true,
+            pan: true,
+            reset: true
+          }
         },
-        zoom: {
+        zoom: { 
+          enabled: true, 
+          type: 'x' as const,
+          autoScaleYaxis: true, // Auto-scale Y axis when zooming
+          zoomedArea: {
+            fill: {
+              color: 'hsl(120 100% 50%)',
+              opacity: 0.4
+            },
+            stroke: {
+              color: 'hsl(120 100% 50%)',
+              opacity: 0.4,
+              width: 1
+            }
+          }
+        },
+        pan: {
+          enabled: true,
+          type: 'x' as const
+        },
+        selection: {
           enabled: true,
           type: 'x' as const
         }
       },
       xaxis: {
-        categories: data.dates,
+        type: 'datetime' as const,
         labels: {
           style: {
             fontFamily: 'JetBrains Mono, monospace',
             fontSize: '10px',
             colors: [theme === 'dark' ? '#94a3b8' : '#64748b']
           },
-          rotate: -45,
-          formatter: function(value: string) {
-            // Format date to show only month/day for cleaner display
-            const date = new Date(value);
-            return `${date.getMonth() + 1}/${date.getDate()}`;
+          datetimeUTC: false,
+          // Show more granular labels based on data range
+          formatter: (value: string | number, timestamp?: number) => {
+            try {
+              const d = new Date(typeof value === 'string' ? parseInt(value) : value);
+              if (isNaN(d.getTime())) {
+                return 'Invalid';
+              }
+              
+              // For daily granularity, show month/day format
+              const month = d.getMonth() + 1;
+              const day = d.getDate();
+              const year = d.getFullYear().toString().slice(-2);
+              
+              // Show different formats based on zoom level
+              return `${month}/${day}/${year}`;
+            } catch (error) {
+              console.warn('Error formatting date label:', value, error);
+              return 'Invalid';
+            }
+          },
+          // Control label frequency
+          rotate: -45, // Rotate labels to fit more
+          rotateAlways: true,
+          hideOverlappingLabels: false, // Show all labels, let rotation handle overlap
+          showDuplicates: false
+        },
+        // Better tick configuration for daily data
+        tickAmount: Math.min(20, Math.max(10, Math.floor(seriesData.length / 30))), // Adaptive tick count
+        axisBorder: { color: theme === 'dark' ? '#334155' : '#e2e8f0' },
+        axisTicks: { color: theme === 'dark' ? '#334155' : '#e2e8f0' },
+        tooltip: {
+          enabled: true,
+          formatter: (value: string) => {
+            const d = new Date(parseInt(value));
+            return d.toLocaleDateString('en-US', { 
+              weekday: 'short',
+              year: 'numeric', 
+              month: 'short', 
+              day: 'numeric' 
+            });
           }
-        },
-        axisBorder: {
-          color: theme === 'dark' ? '#334155' : '#e2e8f0'
-        },
-        axisTicks: {
-          color: theme === 'dark' ? '#334155' : '#e2e8f0'
         }
       },
       yaxis: {
@@ -595,9 +780,7 @@ export default function Home() {
             colors: [theme === 'dark' ? '#94a3b8' : '#64748b']
           }
         },
-        axisBorder: {
-          color: theme === 'dark' ? '#334155' : '#e2e8f0'
-        }
+        axisBorder: { color: theme === 'dark' ? '#334155' : '#e2e8f0' }
       },
       fill: {
         type: 'gradient',
@@ -607,71 +790,39 @@ export default function Home() {
           opacityTo: 0.1,
           stops: [0, 100],
           colorStops: [
-            {
-              offset: 0,
-              color: 'hsl(120 100% 50%)',
-              opacity: 0.4
-            },
-            {
-              offset: 100,
-              color: 'hsl(120 100% 50%)',
-              opacity: 0.1
-            }
+            { offset: 0, color: 'hsl(120 100% 50%)', opacity: 0.4 },
+            { offset: 100, color: 'hsl(120 100% 50%)', opacity: 0.1 }
           ]
         }
       },
-      stroke: {
-        curve: 'smooth' as const,
-        width: 2,
-        colors: ['hsl(120 100% 50%)']
-      },
-      dataLabels: {
-        enabled: false
-      },
+      stroke: { curve: 'smooth' as const, width: 2, colors: ['hsl(120 100% 50%)'] },
+      dataLabels: { enabled: false },
       grid: {
         borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
         strokeDashArray: 3,
-        xaxis: {
-          lines: {
-            show: true
-          }
-        },
-        yaxis: {
-          lines: {
-            show: true
-          }
-        }
+        xaxis: { lines: { show: true } },
+        yaxis: { lines: { show: true } }
       },
       tooltip: {
         theme: theme === 'dark' ? 'dark' : 'light',
-        style: {
-          fontFamily: 'JetBrains Mono, monospace'
-        },
-        x: {
-          formatter: function(value: any) {
-            const date = new Date(data.dates[value - 1]);
-            return date.toLocaleDateString();
-          }
-        }
+        style: { fontFamily: 'JetBrains Mono, monospace' },
+        x: { format: 'MMM d, yyyy' }
       },
       responsive: [{
         breakpoint: 640,
-        options: {
-          chart: {
-            height: 250
-          },
-          xaxis: {
-            labels: {
-              fontSize: '9px'
-            }
-          }
-        }
+        options: { chart: { height: 250 }, xaxis: { labels: { fontSize: '9px' } } }
       }]
     };
 
     return (
       <div className="chart-container">
-        <Chart options={options} series={options.series} type="area" height={getChartHeight()} />
+        <Chart 
+          key={`daily-chart-${theme}`}
+          options={options} 
+          series={options.series} 
+          type="area" 
+          height={getChartHeight()} 
+        />
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono">
           <div className="bg-muted/30 retro-border rounded-md p-3 text-center">
             <div className="text-terminal font-bold">{data.total_days}</div>
@@ -737,6 +888,16 @@ export default function Home() {
             <p className="text-lg font-semibold text-terminal font-mono">
               INITIALIZATION_COMPLETE: Data analyzed successfully
             </p>
+            {results.topics.topic_mode && (
+              <p className="text-sm text-muted-foreground font-mono mt-2">
+                Topic Analysis Mode: {results.topics.topic_mode === 'openai' ? 
+                  'OPENAI_ENHANCED [Advanced AI Analysis]' : 
+                  results.topics.topic_mode === 'bertopic' ?
+                  'BERTOPIC [Advanced Semantic Analysis]' :
+                  'SIMPLE [Keyword Frequency Analysis]'
+                }
+              </p>
+            )}
           </div>
 
           {/* Stats Grid */}
@@ -771,7 +932,11 @@ export default function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             <ChartCard
               title="TOPIC_DISTRIBUTION"
-              description="conversation topics analyzed"
+              description={`conversation topics ${
+                results.topics.topic_mode === 'openai' ? '(AI-enhanced)' : 
+                results.topics.topic_mode === 'bertopic' ? '(semantic-based)' :
+                '(keyword-based)'
+              }`}
               icon={Terminal}
             >
               {createTopicsChart(results.topics)}
@@ -848,7 +1013,7 @@ export default function Home() {
           </div>
 
           {/* Main Card */}
-          <Card className="retro-border bg-card">
+          <Card className="retro-border bg-card terminal-glow">
             <CardHeader className="text-center border-b border-border">
               <CardTitle className="text-xl flex items-center justify-center gap-2 font-mono">
                 <Zap className="w-5 h-5 text-terminal" />
@@ -874,9 +1039,10 @@ export default function Home() {
                     placeholder="sk-... (leave empty for basic analysis)"
                     className="font-mono retro-border bg-muted/30"
                   />
-                  <p className="text-xs text-muted-foreground font-mono">
-                    // optional: enables advanced topic analysis
-                  </p>
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <p><strong>With API key:</strong> AI-powered topic analysis using GPT</p>
+                    <p><strong>Without API key:</strong> Advanced semantic analysis using BERTopic</p>
+                  </div>
                 </div>
 
                 {/* File Upload */}
