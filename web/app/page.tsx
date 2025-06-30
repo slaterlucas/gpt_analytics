@@ -76,6 +76,28 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, selectedFile }) =
 const LoadingScreen: React.FC<{ progress: number; message: string; theme: string | undefined }> = ({ progress, message, theme }) => {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">
+      {/* Particle Effects */}
+      <div className="particle-container">
+        
+        {/* Floating particles */}
+        <div className="floating-particle"></div>
+        <div className="floating-particle"></div>
+        <div className="floating-particle"></div>
+        <div className="floating-particle"></div>
+        
+        {/* Sparkle effects */}
+        <div className="sparkle"></div>
+        <div className="sparkle"></div>
+        <div className="sparkle"></div>
+        <div className="sparkle"></div>
+        <div className="sparkle"></div>
+        
+        {/* Glitch pixels */}
+        <div className="glitch-pixel"></div>
+        <div className="glitch-pixel"></div>
+        <div className="glitch-pixel"></div>
+      </div>
+      
       {/* Theme toggle */}
       <div className="absolute top-4 right-4 z-20">
         <Button
@@ -693,7 +715,8 @@ export default function Home() {
             zoomout: true,
             pan: true,
             reset: true
-          }
+          },
+          theme: 'light' // Always use light theme for toolbar (dark text on white background)
         },
         zoom: { 
           enabled: true, 
@@ -726,7 +749,7 @@ export default function Home() {
           style: {
             fontFamily: 'JetBrains Mono, monospace',
             fontSize: '10px',
-            colors: [theme === 'dark' ? '#94a3b8' : '#64748b']
+            colors: theme === 'dark' ? '#94a3b8' : '#64748b'
           },
           datetimeUTC: false,
           // Show more granular labels based on data range
@@ -857,6 +880,28 @@ export default function Home() {
   if (results) {
     return (
       <div className="min-h-screen bg-background">
+        {/* Particle Effects */}
+        <div className="particle-container">
+
+          {/* Floating particles */}
+          <div className="floating-particle"></div>
+          <div className="floating-particle"></div>
+          <div className="floating-particle"></div>
+          <div className="floating-particle"></div>
+          
+          {/* Sparkle effects */}
+          <div className="sparkle"></div>
+          <div className="sparkle"></div>
+          <div className="sparkle"></div>
+          <div className="sparkle"></div>
+          <div className="sparkle"></div>
+          
+          {/* Glitch pixels */}
+          <div className="glitch-pixel"></div>
+          <div className="glitch-pixel"></div>
+          <div className="glitch-pixel"></div>
+        </div>
+        
         {/* Theme toggle - back to top right */}
         <div className="absolute top-4 right-4 z-20">
           <Button
@@ -985,6 +1030,28 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Particle Effects */}
+      <div className="particle-container">
+
+        {/* Floating particles */}
+        <div className="floating-particle"></div>
+        <div className="floating-particle"></div>
+        <div className="floating-particle"></div>
+        <div className="floating-particle"></div>
+        
+        {/* Sparkle effects */}
+        <div className="sparkle"></div>
+        <div className="sparkle"></div>
+        <div className="sparkle"></div>
+        <div className="sparkle"></div>
+        <div className="sparkle"></div>
+        
+        {/* Glitch pixels */}
+        <div className="glitch-pixel"></div>
+        <div className="glitch-pixel"></div>
+        <div className="glitch-pixel"></div>
+      </div>
+      
       {/* Theme toggle - back to top right */}
       <div className="absolute top-4 right-4 z-20">
         <Button
