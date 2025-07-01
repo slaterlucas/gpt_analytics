@@ -18,6 +18,8 @@ dist/
 .env.test.local
 .env.production.local
 
+*.json 
+
 # Python
 .venv/
 __pycache__/

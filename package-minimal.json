@@ -1,9 +1,0 @@
-{
-    "name": "chatgpt-analytics-minimal",
-    "private": true,
-    "workspaces": ["web"],
-    "scripts": {
-      "dev": "cd web && npm run dev",
-      "backend": "cd api && python -m uvicorn app.main:app --reload --port 8000"
-    }
-  }

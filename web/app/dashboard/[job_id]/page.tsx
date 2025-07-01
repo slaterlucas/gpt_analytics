@@ -1,10 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import dynamic from "next/dynamic";
-
-// Dynamically import ApexCharts to avoid SSR issues
-const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
 interface JobStatus {
   progress: number;
@@ -114,26 +110,7 @@ export default function Dashboard() {
     );
   }
 
-  const chartOptions = {
-    chart: {
-      type: 'donut' as const,
-    },
-    labels: topicData?.labels || [],
-    legend: {
-      position: 'bottom' as const,
-    },
-    plotOptions: {
-      pie: {
-        donut: {
-          size: '65%',
-        },
-      },
-    },
-    colors: [
-      '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
-      '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1'
-    ],
-  };
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -149,18 +126,40 @@ export default function Dashboard() {
 
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-6 text-center">
-            Topic Distribution
+            Top Conversation Topics
           </h2>
           
           {topicData && topicData.series.length > 0 ? (
-            <div className="flex justify-center">
-              <Chart
-                options={chartOptions}
-                series={topicData.series}
-                type="donut"
-                width={500}
-                height={400}
-              />
+            <div className="space-y-3">
+              {topicData.labels.map((label, index) => {
+                const count = topicData.series[index];
+                const totalConversations = topicData.series.reduce((a, b) => a + b, 0);
+                const percentage = ((count / totalConversations) * 100).toFixed(1);
+                
+                return (
+                  <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-900 mb-1">
+                        {label}
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="ml-4 text-right">
+                      <div className="text-lg font-semibold text-gray-900">
+                        {count}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {percentage}%
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="text-center text-gray-500 py-8">
