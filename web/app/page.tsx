@@ -1,12 +1,14 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { Upload, Terminal, Zap, Moon, Sun, MessageSquare, Database, Clock, Loader2 } from 'lucide-react';
+import { Upload, Terminal, Zap, Moon, Sun, MessageSquare, Database, Clock, Loader2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTheme } from 'next-themes';
 import dynamic from 'next/dynamic';
+import CursorTrail from '@/components/cursor-trail';
+import { CostEstimationPopup } from '@/components/cost-estimation-popup';
 
 // Dynamically import ApexCharts with better error handling
 const Chart = dynamic(() => import('react-apexcharts'), { 
@@ -291,18 +293,65 @@ const ChartCard: React.FC<ChartCardProps> = ({ title, description, icon: Icon, c
   </Card>
 );
 
+// Add interface for cost data
+interface CostBreakdown {
+  total_conversations: number;
+  num_clusters: number;
+  use_llm_naming: boolean;
+  embedding_model: string;
+  costs: {
+    embeddings: {
+      model: string;
+      tokens: number;
+      cost: number;
+      description: string;
+      tokens_per_conversation: number;
+      estimation_note: string;
+    };
+    llm_naming: {
+      input_tokens: number;
+      output_tokens: number;
+      cost: number;
+      description: string;
+    };
+    total: {
+      cost: number;
+      formatted: string;
+    };
+    high_usage_scenario: {
+      embedding_tokens: number;
+      embedding_cost: number;
+      total_cost: number;
+      cost_difference: number;
+      description: string;
+      tokens_per_conversation: number;
+    };
+  };
+  cost_per_conversation: number;
+  warnings: string[];
+  file_info?: {
+    filename: string;
+    size_bytes: number;
+    detected_format: string;
+  };
+}
+
 export default function Home() {
-  const [apiKey, setApiKey] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [statusMessage, setStatusMessage] = useState('');
-  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
-  const [results, setResults] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const { theme, setTheme } = useTheme();
+  const [results, setResults] = useState<any>(null);
+  const [apiKey, setApiKey] = useState('');
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const { theme, setTheme } = useTheme();
+
+  // Cost estimation state
+  const [showCostPopup, setShowCostPopup] = useState(false);
+  const [costData, setCostData] = useState<CostBreakdown | null>(null);
+  const [costLoading, setCostLoading] = useState(false);
+  const [costError, setCostError] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -310,7 +359,115 @@ export default function Home() {
 
   const showError = (message: string) => {
     setError(message);
-    setTimeout(() => setError(null), 5000);
+    setTimeout(() => setError(null), 8000);
+  };
+
+  // Cost estimation functions
+  const estimateFileCost = async (file: File) => {
+    setCostLoading(true);
+    setCostError(null);
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('num_clusters', '15'); // Default clusters
+      formData.append('use_llm_naming', 'true'); // Enable LLM naming by default
+      
+      const response = await fetch('http://127.0.0.1:8000/estimate-file-cost', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const result = await response.json();
+      
+      if (result.error) {
+        setCostError(result.error);
+        setCostData(null);
+      } else {
+        setCostData(result);
+        setCostError(null);
+      }
+    } catch (error) {
+      setCostError('Failed to estimate costs - please check your connection');
+      setCostData(null);
+    } finally {
+      setCostLoading(false);
+    }
+  };
+
+  const handleCostConfirm = () => {
+    setShowCostPopup(false);
+    proceedWithAnalysis();
+  };
+
+  const handleCostCancel = () => {
+    setShowCostPopup(false);
+    setCostData(null);
+    setCostError(null);
+  };
+
+  const proceedWithAnalysis = async () => {
+    if (!selectedFile) return;
+
+    console.log(`DEBUG: Starting upload for file:`, selectedFile.name);
+    setIsLoading(true);
+    setProgress(0);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      
+      // Only include API key if provided
+      if (apiKey.trim()) {
+        console.log(`DEBUG: Including API key in upload`);
+        formData.append('api_key', apiKey);
+      } else {
+        console.log(`DEBUG: No API key provided, using simple analysis`);
+      }
+
+      console.log(`DEBUG: Uploading to backend...`);
+      const response = await fetch('http://127.0.0.1:8000/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+      console.log(`DEBUG: Upload response:`, result);
+
+      if (result.error) {
+        console.log(`DEBUG: Upload error:`, result.error);
+        showError(`UPLOAD_ERROR: ${result.error}`);
+        setIsLoading(false);
+        return;
+      }
+
+      console.log(`DEBUG: Upload successful, job ID: ${result.job_id}`);
+      setCurrentJobId(result.job_id);
+      pollStatus(result.job_id);
+    } catch (error) {
+      console.log(`DEBUG: Upload failed:`, error);
+      showError('UPLOAD_FAILED: Unable to upload file for analysis');
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedFile) {
+      showError('FILE_REQUIRED: Please select a ChatGPT conversations file');
+      return;
+    }
+
+    // If API key is provided, show cost estimation popup first
+    if (apiKey.trim()) {
+      setShowCostPopup(true);
+      await estimateFileCost(selectedFile);
+    } else {
+      // No API key, proceed directly with analysis
+      proceedWithAnalysis();
+    }
   };
 
   const pollStatus = async (jobId: string) => {
@@ -369,165 +526,89 @@ export default function Home() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!selectedFile) {
-      showError('FILE_REQUIRED: Please select a ChatGPT conversations file');
-      return;
-    }
-
-    console.log(`DEBUG: Starting upload for file:`, selectedFile.name);
-    setIsLoading(true);
-    setProgress(0);
-    setError(null);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      
-      // Only include API key if provided
-      if (apiKey.trim()) {
-        console.log(`DEBUG: Including API key in upload`);
-        formData.append('api_key', apiKey);
-      } else {
-        console.log(`DEBUG: No API key provided, using simple analysis`);
-      }
-
-      console.log(`DEBUG: Uploading to backend...`);
-      const response = await fetch('http://127.0.0.1:8000/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const result = await response.json();
-      console.log(`DEBUG: Upload response:`, result);
-
-      if (result.error) {
-        console.log(`DEBUG: Upload error:`, result.error);
-        showError(`UPLOAD_ERROR: ${result.error}`);
-        setIsLoading(false);
-        return;
-      }
-
-      console.log(`DEBUG: Upload successful, job ID: ${result.job_id}`);
-      setCurrentJobId(result.job_id);
-      pollStatus(result.job_id);
-    } catch (error) {
-      console.log(`DEBUG: Upload failed:`, error);
-      showError('UPLOAD_FAILED: Unable to upload file for analysis');
-      setIsLoading(false);
-    }
-  };
-
   const createTopicsChart = (data: any) => {
     if (!data.series || data.series.length === 0) {
       return <p className="text-center text-muted-foreground text-sm font-mono">No topics found in conversations</p>;
     }
 
-    // Responsive chart height based on screen size - LARGER for topics chart to match models section total height
-    const getChartHeight = () => {
-      if (typeof window !== 'undefined') {
-        return window.innerWidth < 640 ? 400 : window.innerWidth < 1024 ? 500 : 600;
-      }
-      return 500;
-    };
+    // Create topic list with percentages and AI-generated emojis
+    const totalConversations = data.series.reduce((a: number, b: number) => a + b, 0);
+    const topicList = data.labels.map((label: string, index: number) => ({
+      name: label,
+      count: data.series[index],
+      percentage: ((data.series[index] / totalConversations) * 100).toFixed(1),
+      emoji: data.emojis?.[index] || '💡' // Use AI-generated emoji or fallback
+    }));
 
-    // More robust theme detection with fallback
-    const isDarkMode = theme === 'dark' || (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    const legendTextColor = isDarkMode ? '#ffffff' : '#000000'; // Pure white/black for maximum contrast
-    const dataLabelColor = isDarkMode ? '#ffffff' : '#000000';
-    
-    console.log('DEBUG: Theme =', theme, 'isDarkMode =', isDarkMode, 'legendTextColor =', legendTextColor);
+    // Sort by count (highest first)
+    topicList.sort((a: any, b: any) => b.count - a.count);
 
-    const options = {
-      series: data.series,
-      chart: {
-        type: 'donut' as const,
-        height: getChartHeight(),
-        fontFamily: 'JetBrains Mono, monospace',
-        background: 'transparent',
-        toolbar: { 
-          show: true, // Enable toolbar for zoom controls
-          tools: {
-            download: true,
-            selection: true,
-            zoom: true,
-            zoomin: true,
-            zoomout: true,
-            pan: true,
-            reset: true
-          }
-        }
-      },
-      labels: data.labels,
-      legend: {
-        position: 'bottom' as const,
-        fontFamily: 'JetBrains Mono, monospace',
-        fontSize: '11px',
-        labels: {
-          colors: legendTextColor, // Use explicit color
-          useSeriesColors: false
-        },
-        itemMargin: {
-          horizontal: 8,
-          vertical: 4
-        }
-      },
-      plotOptions: {
-        pie: {
-          donut: {
-            size: '65%'
-          }
-        }
-      },
-      colors: ['hsl(120 100% 50%)', '#8b5cf6', '#06b6d4', '#f59e0b', '#ef4444', '#10b981'],
-      dataLabels: {
-        enabled: true,
-        style: {
-          fontFamily: 'JetBrains Mono, monospace',
-          fontSize: '11px',
-          colors: [dataLabelColor],
-          fontWeight: 'bold'
-        },
-        background: {
-          enabled: true,
-          foreColor: isDarkMode ? '#000000' : '#ffffff', // Opposite of text color for contrast
-          borderColor: isDarkMode ? '#334155' : '#e2e8f0',
-          borderWidth: 1,
-          borderRadius: 4,
-          padding: 4,
-          opacity: 0.9
-        },
-        formatter: function(val: number) {
-          return val.toFixed(1) + '%';
-        }
-      },
-      tooltip: {
-        theme: theme === 'dark' ? 'dark' : 'light'
-      },
-      responsive: [{
-        breakpoint: 640,
-        options: {
-          chart: {
-            height: 400
-          },
-          legend: {
-            fontSize: '10px'
-          }
-        }
-      }]
-    };
+    // Fun gradient colors for each item
+    const gradients = [
+      'from-purple-500 to-pink-500',
+      'from-blue-500 to-cyan-500', 
+      'from-green-500 to-emerald-500',
+      'from-yellow-500 to-orange-500',
+      'from-red-500 to-rose-500',
+      'from-indigo-500 to-purple-500',
+      'from-teal-500 to-blue-500',
+      'from-orange-500 to-red-500',
+      'from-cyan-500 to-blue-500',
+      'from-pink-500 to-purple-500'
+    ];
 
     return (
-      <div className="chart-container">
-        <Chart 
-          key={`topics-chart-${theme}`} 
-          options={options} 
-          series={data.series} 
-          type="donut" 
-          height={getChartHeight()} 
-        />
+      <div className="space-y-4 max-h-96 overflow-y-auto">
+        {topicList.map((topic: any, index: number) => {
+          const gradientClass = gradients[index % gradients.length];
+          
+          return (
+            <div 
+              key={index} 
+              className={`group relative p-4 rounded-xl bg-gradient-to-r ${gradientClass} bg-opacity-10 backdrop-blur-sm border border-white/10 hover:scale-105 hover:shadow-lg transition-all duration-300 cursor-pointer`}
+            >
+              {/* Animated background shine effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl" />
+              
+              <div className="flex items-center justify-between relative z-10">
+                <div className="flex items-center space-x-3 flex-1">
+                  {/* AI-Generated Emoji with bounce animation */}
+                  <div className="text-2xl group-hover:scale-110 group-hover:animate-bounce transition-transform duration-300">
+                    {topic.emoji}
+                  </div>
+                  
+                  <div className="flex-1">
+                    {/* Topic name with rainbow hover effect */}
+                    <div className="font-semibold text-foreground mb-2 font-mono text-sm group-hover:bg-gradient-to-r group-hover:from-pink-500 group-hover:via-purple-500 group-hover:to-cyan-500 group-hover:bg-clip-text group-hover:text-transparent transition-all duration-300">
+                      {topic.name}
+                    </div>
+                    
+                    {/* Animated progress bar with shine effect */}
+                    <div className="w-full bg-black/20 rounded-full h-3 overflow-hidden">
+                      <div 
+                        className={`h-3 rounded-full bg-gradient-to-r ${gradientClass} transition-all duration-500 relative overflow-hidden`}
+                        style={{ width: `${topic.percentage}%` }}
+                      >
+                        {/* Shine effect on progress bar */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent group-hover:animate-pulse" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Stats with gradient text */}
+                <div className="ml-4 text-right">
+                  <div className={`text-xl font-bold bg-gradient-to-r ${gradientClass} bg-clip-text text-transparent font-mono`}>
+                    {topic.count}
+                  </div>
+                  <div className="text-sm text-muted-foreground font-mono opacity-80">
+                    {topic.percentage}%
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -874,7 +955,7 @@ export default function Home() {
 
   // Show loading screen when processing
   if (isLoading) {
-    return <LoadingScreen progress={progress} message={statusMessage} theme={theme} />;
+    return <LoadingScreen progress={progress} message={error || ''} theme={theme} />;
   }
 
   if (results) {
@@ -933,16 +1014,7 @@ export default function Home() {
             <p className="text-lg font-semibold text-terminal font-mono">
               INITIALIZATION_COMPLETE: Data analyzed successfully
             </p>
-            {results.topics.topic_mode && (
-              <p className="text-sm text-muted-foreground font-mono mt-2">
-                Topic Analysis Mode: {results.topics.topic_mode === 'openai' ? 
-                  'OPENAI_ENHANCED [Advanced AI Analysis]' : 
-                  results.topics.topic_mode === 'bertopic' ?
-                  'BERTOPIC [Advanced Semantic Analysis]' :
-                  'SIMPLE [Keyword Frequency Analysis]'
-                }
-              </p>
-            )}
+
           </div>
 
           {/* Stats Grid */}
@@ -1151,6 +1223,18 @@ export default function Home() {
           </Card>
         </div>
       </div>
+
+      {/* Cost Estimation Popup */}
+      <CostEstimationPopup
+        isOpen={showCostPopup}
+        onClose={handleCostCancel}
+        onConfirm={handleCostConfirm}
+        costData={costData}
+        isLoading={costLoading}
+        error={costError}
+      />
+
+      <CursorTrail />
     </div>
   );
 } 
