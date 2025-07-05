@@ -24,8 +24,9 @@ JOBS = {}
 
 class CostEstimateRequest(BaseModel):
     num_conversations: int
-    num_clusters: int = 25
+    num_clusters: Optional[int] = None  # Auto-calculated if not provided
     use_llm_naming: bool = True
+    use_advanced_analysis: bool = True  # Use advanced chunking analysis by default
 
 @app.post("/estimate-cost")
 async def estimate_cost(request: CostEstimateRequest):
@@ -33,19 +34,44 @@ async def estimate_cost(request: CostEstimateRequest):
     Estimate the cost of running embedding-based topic analysis with text-embedding-3-large
     """
     try:
+        # Auto-calculate optimal cluster count if not provided
+        if request.num_clusters is None:
+            n_conversations = request.num_conversations
+            if n_conversations < 50:
+                optimal_clusters = min(8, n_conversations // 5)
+            elif n_conversations < 200:
+                optimal_clusters = min(12, n_conversations // 10)
+            elif n_conversations < 500:
+                optimal_clusters = min(18, n_conversations // 20)
+            else:
+                optimal_clusters = min(25, n_conversations // 30)
+            actual_clusters = max(3, optimal_clusters)  # Minimum 3 clusters
+        else:
+            actual_clusters = request.num_clusters
+        
         cost_breakdown = estimate_analysis_cost(
             num_conversations=request.num_conversations,
-            num_clusters=request.num_clusters,
-            use_llm_naming=request.use_llm_naming
+            num_clusters=actual_clusters,
+            use_llm_naming=request.use_llm_naming,
+            use_advanced_analysis=request.use_advanced_analysis
         )
+        
+        # Add cluster calculation info
+        cost_breakdown["cluster_info"] = {
+            "requested_clusters": request.num_clusters,
+            "actual_clusters": actual_clusters,
+            "auto_calculated": request.num_clusters is None
+        }
+        
         return cost_breakdown
     except Exception as e:
         return {"error": f"Cost estimation error: {str(e)}"}
 
 @app.post("/estimate-file-cost")
 async def estimate_file_cost(file: UploadFile, 
-                            num_clusters: int = 25, 
-                            use_llm_naming: bool = True):
+                            num_clusters: Optional[int] = None,  # Auto-calculated if not provided
+                            use_llm_naming: bool = True,
+                            use_advanced_analysis: bool = True):
     """
     Estimate the cost of analyzing an uploaded ChatGPT export file with text-embedding-3-large
     """
@@ -86,12 +112,34 @@ async def estimate_file_cost(file: UploadFile,
         if conversation_count == 0:
             return {"error": "No conversations found in file"}
         
+        # Auto-calculate optimal cluster count if not provided
+        if num_clusters is None:
+            if conversation_count < 50:
+                optimal_clusters = min(8, conversation_count // 5)
+            elif conversation_count < 200:
+                optimal_clusters = min(12, conversation_count // 10)
+            elif conversation_count < 500:
+                optimal_clusters = min(18, conversation_count // 20)
+            else:
+                optimal_clusters = min(25, conversation_count // 30)
+            actual_clusters = max(3, optimal_clusters)  # Minimum 3 clusters
+        else:
+            actual_clusters = num_clusters
+        
         # Generate cost estimate
         cost_breakdown = estimate_analysis_cost(
             num_conversations=conversation_count,
-            num_clusters=num_clusters,
-            use_llm_naming=use_llm_naming
+            num_clusters=actual_clusters,
+            use_llm_naming=use_llm_naming,
+            use_advanced_analysis=use_advanced_analysis
         )
+        
+        # Add cluster calculation info
+        cost_breakdown["cluster_info"] = {
+            "requested_clusters": num_clusters,
+            "actual_clusters": actual_clusters,
+            "auto_calculated": num_clusters is None
+        }
         
         # Add file info
         cost_breakdown["file_info"] = {
@@ -151,7 +199,7 @@ def health():
 
 @app.post("/analyze-cleaned")
 async def analyze_cleaned_conversations(file: UploadFile, bg: BackgroundTasks, 
-                                       num_clusters: int = 25, 
+                                       num_clusters: Optional[int] = None,  # Auto-calculated if not provided
                                        max_conversations: Optional[int] = None,
                                        use_llm_naming: bool = True,
                                        api_key: Optional[str] = Form(None)):

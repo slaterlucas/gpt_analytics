@@ -10,3 +10,6 @@ sentence-transformers
 openai
 scikit-learn 
 tiktoken
+hdbscan
+umap-learn
+plotly
