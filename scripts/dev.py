@@ -6,14 +6,26 @@ VENV = ROOT / ".venv"
 PIP  = VENV / ("Scripts/pip.exe" if os.name == "nt" else "bin/pip")
 PY   = VENV / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
+WEB = ROOT / "web"
+
 def ensure_venv():
     if VENV.exists(): return
     print("📦  Creating virtual-env …")
     venv.create(VENV, with_pip=True)
     subprocess.check_call([str(PIP), "install", "-r", "api/requirements.txt"])
 
+def ensure_web_deps():
+    """Install npm packages in web/ if node_modules is missing"""
+    node_modules_dir = WEB / "node_modules"
+    if node_modules_dir.exists():
+        return
+    print("📦  Installing frontend dependencies …")
+    subprocess.check_call(["npm", "install"], cwd=str(WEB))
+    print("✅  Frontend dependencies installed")
+
 def serve():
     ensure_venv()
+    ensure_web_deps()
     os.chdir(ROOT)
     cmd = [
         "npx", "concurrently", "-k",
