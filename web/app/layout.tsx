@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "@/components/theme-provider";
 import CursorTrail from "@/components/cursor-trail";
+import ApexDarkMenuStyles from '@/components/ApexDarkMenuStyles';
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,9 +20,10 @@ export default function RootLayout({
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"
-          enableSystem
+          forcedTheme="dark"
           disableTransitionOnChange
         >
+          <ApexDarkMenuStyles />
           {children}
           <CursorTrail />
         </ThemeProvider>

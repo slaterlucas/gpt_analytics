@@ -1,5 +1,6 @@
 import json
 import re
+import math
 from pathlib import Path
 from collections import Counter, defaultdict
 import traceback
@@ -14,6 +15,13 @@ from sklearn.cluster import KMeans, DBSCAN
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import normalize
 import warnings
+import unicodedata
+
+# Suppress numerical warnings from sklearn operations
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="sklearn")
+warnings.filterwarnings("ignore", message=".*divide by zero.*")
+warnings.filterwarnings("ignore", message=".*overflow.*")
+warnings.filterwarnings("ignore", message=".*invalid value.*")
 
 # OpenAI Pricing (2024)
 OPENAI_PRICING = {
@@ -372,7 +380,10 @@ def simple_topic_analysis(messages, job_id: str, jobs: dict):
     
     jobs[job_id]["progress"] = 100
     
-    return {"topics": final_topics[:12], "mode": "simple"}
+    # Group generic topics before returning
+    grouped_topics = group_generic_topics(final_topics[:12])
+    
+    return {"topics": grouped_topics, "mode": "simple"}
 
 def bertopic_analysis(messages, job_id: str, jobs: dict, conversation_titles=None):
     """Advanced semantic topic discovery using BERTopic - TITLE-BASED MODE for efficiency"""
@@ -619,7 +630,10 @@ def bertopic_analysis(messages, job_id: str, jobs: dict, conversation_titles=Non
         jobs[job_id]["progress"] = 100
         print(f"DEBUG: BERTopic analysis complete, returning {len(bertopic_topics)} topics")
         
-        return {"topics": bertopic_topics, "mode": f"bertopic{mode_suffix}"}
+        # Group generic topics before returning
+        grouped_topics = group_generic_topics(bertopic_topics)
+        
+        return {"topics": grouped_topics, "mode": f"bertopic{mode_suffix}"}
         
     except Exception as e:
         print(f"DEBUG: BERTopic analysis failed: {e}")
@@ -702,7 +716,11 @@ def openai_topic_analysis(messages, job_id: str, jobs: dict, api_key: str):
             jobs[job_id]["progress"] = 100
             
             print(f"OpenAI analysis successful: {len(validated_topics)} topics found")
-            return {"topics": validated_topics, "mode": "openai"}
+            
+            # Group generic topics before returning
+            grouped_topics = group_generic_topics(validated_topics)
+            
+            return {"topics": grouped_topics, "mode": "openai"}
             
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             print(f"OpenAI response parsing error: {e}")
@@ -813,16 +831,29 @@ def embedding_based_topic_analysis(conversations: List[Dict], num_clusters: int 
     embeddings_array = np.array(embeddings)
     print(f"   Created embeddings matrix: {embeddings_array.shape}")
     
-    # Add larger random noise to prevent identical embeddings (fixes divide by zero)
+    # Enhanced numerical stability fixes
+    # 1. Check for and fix NaN/inf values
+    if np.any(np.isnan(embeddings_array)) or np.any(np.isinf(embeddings_array)):
+        print("   ⚠️  Found NaN/inf values in embeddings, cleaning...")
+        embeddings_array = np.nan_to_num(embeddings_array, nan=0.0, posinf=1.0, neginf=-1.0)
+    
+    # 2. Add larger random noise to prevent identical embeddings (fixes divide by zero)
     np.random.seed(42)  # For reproducibility
-    noise = np.random.normal(0, 1e-6, embeddings_array.shape)  # Increased noise
+    noise = np.random.normal(0, 1e-5, embeddings_array.shape)  # Increased noise
     embeddings_array = embeddings_array + noise
     
-    # Normalize embeddings to prevent overflow
+    # 3. Check for zero vectors before normalization
+    vector_norms = np.linalg.norm(embeddings_array, axis=1)
+    zero_vectors = vector_norms < 1e-10
+    if np.any(zero_vectors):
+        print(f"   ⚠️  Found {np.sum(zero_vectors)} zero vectors, replacing with small random values...")
+        embeddings_array[zero_vectors] = np.random.normal(0, 1e-3, (np.sum(zero_vectors), embeddings_array.shape[1]))
+    
+    # 4. Normalize embeddings to prevent overflow (now safe from division by zero)
     embeddings_array = normalize(embeddings_array, norm='l2', axis=1)
     
-    # Additional stability check
-    embeddings_array = np.clip(embeddings_array, -1.0, 1.0)  # Clip extreme values
+    # 5. Additional stability check - clip extreme values
+    embeddings_array = np.clip(embeddings_array, -1.0, 1.0)
     
     # Determine optimal number of clusters dynamically
     n_conversations = len(conversations)
@@ -885,29 +916,38 @@ def embedding_based_topic_analysis(conversations: List[Dict], num_clusters: int 
         print(f"   DBSCAN failed ({e}), using K-means clustering...")
         # Fall back to improved K-means with multiple initializations
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=RuntimeWarning, module="sklearn")
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
             
             # Try multiple K-means runs and pick the best one
             best_kmeans = None
             best_inertia = float('inf')
             
             for init_method in ['k-means++', 'random']:
-                kmeans = KMeans(
-                    n_clusters=actual_clusters, 
-                    random_state=42, 
-                    n_init=20,  # More initializations
-                    max_iter=500,  # More iterations
-                    tol=1e-6,
-                    init=init_method
-                )
-                kmeans.fit(embeddings_array)
-                
-                if kmeans.inertia_ < best_inertia:
-                    best_inertia = kmeans.inertia_
-                    best_kmeans = kmeans
+                try:
+                    kmeans = KMeans(
+                        n_clusters=actual_clusters, 
+                        random_state=42, 
+                        n_init=10,  # Reasonable number of initializations
+                        max_iter=300,  # Reasonable iterations
+                        tol=1e-4,     # Less strict tolerance
+                        init=init_method,
+                        algorithm='lloyd'
+                    )
+                    kmeans.fit(embeddings_array)
+                    
+                    if kmeans.inertia_ < best_inertia:
+                        best_inertia = kmeans.inertia_
+                        best_kmeans = kmeans
+                except Exception as kmeans_error:
+                    print(f"   ⚠️  K-means with {init_method} init failed: {kmeans_error}")
+                    continue
             
-            cluster_labels = best_kmeans.labels_
-            print(f"   K-means clustering completed with inertia: {best_inertia:.2f}")
+            if best_kmeans is not None:
+                cluster_labels = best_kmeans.labels_
+                print(f"   K-means clustering completed with inertia: {best_inertia:.2f}")
+            else:
+                print(f"   ⚠️  All K-means attempts failed, using random assignment")
+                cluster_labels = np.random.randint(0, actual_clusters, size=len(embeddings_array))
     
     # Validate cluster quality
     unique_labels = set(cluster_labels)
@@ -949,9 +989,14 @@ def embedding_based_topic_analysis(conversations: List[Dict], num_clusters: int 
                         other_centroid = np.mean(other_embeddings, axis=0)
                         
                         # Use cosine similarity (better for semantic similarity)
-                        similarity = np.dot(tiny_centroid, other_centroid) / (
-                            np.linalg.norm(tiny_centroid) * np.linalg.norm(other_centroid)
-                        )
+                        # Safe cosine similarity calculation to prevent division by zero
+                        norm_tiny = np.linalg.norm(tiny_centroid)
+                        norm_other = np.linalg.norm(other_centroid)
+                        
+                        if norm_tiny < 1e-10 or norm_other < 1e-10:
+                            similarity = 0.0  # Treat zero vectors as dissimilar
+                        else:
+                            similarity = np.dot(tiny_centroid, other_centroid) / (norm_tiny * norm_other)
                         
                         if similarity > best_similarity:
                             best_similarity = similarity
@@ -1539,6 +1584,9 @@ def estimate_analysis_cost(num_conversations: int, num_clusters: Optional[int] =
             optimal_clusters = min(25, num_conversations // 30)
         num_clusters = max(3, optimal_clusters)  # Minimum 3 clusters
     
+    # Estimate final clusters after recursive splitting (~1.7× growth)
+    estimated_final_clusters = max(num_clusters, math.ceil(num_clusters * 1.7))
+    
     # Embedding cost estimation using text-embedding-3-large
     # Advanced analysis uses chunking, so we need to estimate chunks
     if use_advanced_analysis:
@@ -1571,7 +1619,7 @@ def estimate_analysis_cost(num_conversations: int, num_clusters: Optional[int] =
         total_high_usage_tokens = num_conversations * high_usage_tokens_per_conversation
         high_usage_embedding_cost = total_high_usage_tokens * OPENAI_PRICING["text-embedding-3-large"]["input"]
         
-        analysis_description = f"Standard analysis with {num_conversations} conversations"
+        analysis_description = f"Standard analysis with {num_conversations} conversations (~{estimated_final_clusters} clusters)"
     
     # LLM naming cost estimation (if enabled)
     llm_cost = 0.0
@@ -1617,6 +1665,7 @@ def estimate_analysis_cost(num_conversations: int, num_clusters: Optional[int] =
     cost_breakdown = {
         "total_conversations": num_conversations,
         "num_clusters": num_clusters,
+        "estimated_final_clusters": estimated_final_clusters,
         "auto_calculated_clusters": auto_calculated,
         "use_llm_naming": use_llm_naming,
         "use_advanced_analysis": use_advanced_analysis,
@@ -1634,7 +1683,13 @@ def estimate_analysis_cost(num_conversations: int, num_clusters: Optional[int] =
                 "input_tokens": total_llm_input_tokens,
                 "output_tokens": total_llm_output_tokens,
                 "cost": llm_cost,
-                "description": f"gpt-4o-mini for naming {num_clusters} clusters" if (use_llm_naming and not use_advanced_analysis) else f"gpt-4o-mini for topic naming + emoji generation ({num_clusters} clusters)" if (use_advanced_analysis and use_llm_naming) else "Disabled"
+                "description": (
+                    f"gpt-4o-mini for naming ~{estimated_final_clusters} clusters (estimate)"
+                    if (use_llm_naming and not use_advanced_analysis)
+                    else f"gpt-4o-mini for topic naming (~{estimated_final_clusters} clusters)"
+                    if (use_advanced_analysis and use_llm_naming)
+                    else "Disabled"
+                )
             },
             "total": {
                 "cost": total_cost,
@@ -1740,8 +1795,12 @@ def ingest_stream(file_path: Path, job_id: str, jobs: dict, api_key: Optional[st
                 # Fallback to empty topics if structure is wrong
                 topics = []
             
+            # Group generic topics before final result
+            sorted_topics = sorted(topics, key=lambda x: x['count'], reverse=True)
+            grouped_topics = group_generic_topics(sorted_topics)
+            
             topic_result = {
-                'topics': sorted(topics, key=lambda x: x['count'], reverse=True),
+                'topics': grouped_topics,
                 'mode': 'advanced_embedding_clustering',
                 'metadata': {
                     'total_chunks': embedding_result.get('total_chunks', 0),
@@ -1762,9 +1821,12 @@ def ingest_stream(file_path: Path, job_id: str, jobs: dict, api_key: Optional[st
         print(f"DEBUG: Set progress to 80 for job {job_id}, analyzing models...")
         model_stats = analyze_model_usage(model_usage)
         
+        # Group generic topics in the final result
+        final_topics = group_generic_topics(topic_result["topics"])
+        
         # Store comprehensive results
         jobs[job_id]["result"] = {
-            "topics": topic_result["topics"],
+            "topics": final_topics,
             "topic_mode": topic_result.get("mode", "simple"),
             "models": model_stats,
             "conversation_count": conversation_count,
@@ -1811,7 +1873,7 @@ def topic_pie(job_id: str, jobs: dict):
     return {
         "series": [topic["count"] for topic in topics],
         "labels": [topic["topic"] for topic in topics],
-        "emojis": [topic.get("emoji", "💡") for topic in topics],  # Include AI-generated emojis
+        "emojis": [topic.get("emoji", "💡" if not result.get("topic_mode", "simple").startswith("bertopic") else "") for topic in topics],  # Include AI-generated emojis (but not for BERTopic)
         "message_count": job.get("message_count", 0),
         "total_messages": result.get("total_messages", 0),
         "content_types": result.get("content_types", {}),
@@ -1990,19 +2052,34 @@ def advanced_embedding_topic_analysis(conversations: List[Dict], api_key: str = 
     X = np.vstack(embeddings)
     print(f"   Created embedding matrix: {X.shape}")
     
-    # Data validation and cleaning
-    # Check for NaN or infinite values
+    # Enhanced data validation and cleaning
+    # 1. Check for NaN or infinite values
     if np.any(np.isnan(X)) or np.any(np.isinf(X)):
         print("   ⚠️  Found NaN/inf values in embeddings, cleaning...")
         X = np.nan_to_num(X, nan=0.0, posinf=1.0, neginf=-1.0)
     
-    # Check for identical embeddings
+    # 2. Add small random noise to prevent identical embeddings
+    np.random.seed(42)
+    noise = np.random.normal(0, 1e-8, X.shape)
+    X = X + noise
+    
+    # 3. Check for zero vectors before normalization
+    vector_norms = np.linalg.norm(X, axis=1)
+    zero_vectors = vector_norms < 1e-10
+    if np.any(zero_vectors):
+        print(f"   ⚠️  Found {np.sum(zero_vectors)} zero vectors, replacing with small random values...")
+        X[zero_vectors] = np.random.normal(0, 1e-3, (np.sum(zero_vectors), X.shape[1]))
+    
+    # 4. Check for identical embeddings
     if np.allclose(X, X[0], atol=1e-6):
         print("   ⚠️  Embeddings are too similar, falling back to TF-IDF")
         return fallback_tfidf_analysis(conversations, min_cluster_size)
     
-    # L2-normalize for cosine similarity
+    # 5. L2-normalize for cosine similarity (now safe from division by zero)
     X = normalize(X, norm='l2', axis=1)
+    
+    # 6. Clip extreme values after normalization
+    X = np.clip(X, -1.0, 1.0)
     
     # Step 4: Dimensionality reduction with numerical stability
     n_components = min(50, X.shape[1], X.shape[0] - 1)
@@ -2010,18 +2087,37 @@ def advanced_embedding_topic_analysis(conversations: List[Dict], api_key: str = 
         print("   ⚠️  Not enough dimensions for PCA, falling back to TF-IDF")
         return fallback_tfidf_analysis(conversations, min_cluster_size)
     
-    # Use StandardScaler to prevent numerical issues
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    
+    # Enhanced PCA with numerical stability
     try:
-        pca = PCA(n_components=n_components, random_state=42)
-        X_pca = pca.fit_transform(X_scaled)
+        # Use StandardScaler with numerical stability
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Check for numerical issues in scaled data
+        if np.any(np.isnan(X_scaled)) or np.any(np.isinf(X_scaled)):
+            print("   ⚠️  Found NaN/inf values after scaling, cleaning...")
+            X_scaled = np.nan_to_num(X_scaled, nan=0.0, posinf=1.0, neginf=-1.0)
+        
+        # Use PCA with numerical stability
+        pca = PCA(n_components=n_components, random_state=42, svd_solver='auto')
+        
+        # Suppress warnings during PCA
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            X_pca = pca.fit_transform(X_scaled)
+        
         explained_variance = pca.explained_variance_ratio_.sum()
         print(f"   PCA: {X.shape[1]}D → {X_pca.shape[1]}D (preserved {explained_variance:.1%} variance)")
+        
+        # Check PCA results for numerical issues
+        if np.any(np.isnan(X_pca)) or np.any(np.isinf(X_pca)):
+            print("   ⚠️  PCA produced NaN/inf values, cleaning...")
+            X_pca = np.nan_to_num(X_pca, nan=0.0, posinf=1.0, neginf=-1.0)
+        
     except Exception as e:
-        print(f"   ⚠️  PCA failed ({e}), using original embeddings")
-        X_pca = X_scaled
+        print(f"   ⚠️  PCA failed ({e}), using original normalized embeddings")
+        X_pca = X
         explained_variance = 1.0
     
     # Step 5: Adaptive clustering - try HDBSCAN first, fallback to K-means
@@ -2053,11 +2149,30 @@ def advanced_embedding_topic_analysis(conversations: List[Dict], api_key: str = 
     except Exception as e:
         print(f"   ⚠️  HDBSCAN failed ({e}), falling back to K-means")
         
-        # Fallback to K-means with reasonable number of clusters
+        # Fallback to K-means with numerical stability
         n_clusters = min(max(3, len(chunks) // 15), 15)
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-        cluster_labels = kmeans.fit_predict(X_pca)
-        clustering_method = "K-means"
+        
+        # Enhanced K-means with numerical stability
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            
+            try:
+                kmeans = KMeans(
+                    n_clusters=n_clusters, 
+                    random_state=42, 
+                    n_init=10,
+                    init='k-means++',
+                    max_iter=300,
+                    tol=1e-4,
+                    algorithm='lloyd'
+                )
+                cluster_labels = kmeans.fit_predict(X_pca)
+                clustering_method = "K-means"
+            except Exception as kmeans_error:
+                print(f"   ⚠️  K-means also failed ({kmeans_error}), using simple random assignment")
+                # Last resort: random cluster assignment
+                cluster_labels = np.random.randint(0, n_clusters, size=len(X_pca))
+                clustering_method = "Random"
     
     # Step 6: Analyze clustering results
     unique_labels = set(cluster_labels)
@@ -2193,6 +2308,108 @@ def advanced_embedding_topic_analysis(conversations: List[Dict], api_key: str = 
         }
         for cluster_id, info in cluster_topics.items()
     ]
+    
+    # ----------------- LLM-driven generic cluster split -----------------
+    generic_to_split = []
+    for cid, info in cluster_topics.items():
+        if info['chunk_count'] < 10:
+            continue
+        sample_titles = [c['text'].split('.')[0][:100] for c in info['chunks']]
+        size_ratio = info['chunk_count'] / total_chunks_count if total_chunks_count else 0
+        if (size_ratio >= 0.20 or info['chunk_count'] >= 120):
+            if is_cluster_generic_llm(info['topic_name'], info['keywords'], sample_titles, info['conversation_count'], api_key):
+                print(f"   🚩 Cluster {cid} flagged generic & large → '{info['topic_name']}' size {info['chunk_count']} ({size_ratio:.1%})")
+                generic_to_split.append(cid)
+
+    if generic_to_split:
+        print(f"   🔍 LLM flagged {len(generic_to_split)} generic clusters → further splitting...")
+        next_global = max(cluster_labels) + 1 if len(cluster_labels) else 0
+        success_count = 0
+        failure_count = 0
+        
+        for cid in generic_to_split:
+            indices = [i for i, lbl in enumerate(cluster_labels) if lbl == cid]
+            if len(indices) <= 10:
+                print(f"     ❌ Cluster {cid}: Too small ({len(indices)} chunks) - skipping")
+                continue
+                
+            subX = X_pca[indices]
+            min_cs = max(3, len(indices)//6)
+            
+            # Try HDBSCAN first
+            print(f"     🔍 Cluster {cid}: Trying HDBSCAN on {len(indices)} chunks...")
+            splitter = hdbscan.HDBSCAN(min_cluster_size=min_cs, metric='euclidean', min_samples=max(2, min_cs//3))
+            sub_labels = splitter.fit_predict(subX)
+            unique_sub = set(sub_labels); unique_sub.discard(-1)
+            
+            if len(unique_sub) <= 1:
+                # HDBSCAN failed - try K-means fallback
+                print(f"     ⚠️  Cluster {cid}: HDBSCAN found no density pockets → falling back to K-means...")
+                target_k = min(max(2, len(indices)//20), 5)  # 2-5 clusters based on size
+                
+                # Enhanced K-means with numerical stability
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", category=RuntimeWarning)
+                    
+                    try:
+                        kmeans = KMeans(
+                            n_clusters=target_k, 
+                            random_state=42, 
+                            n_init=10,
+                            init='k-means++',
+                            max_iter=300,
+                            tol=1e-4,
+                            algorithm='lloyd'
+                        )
+                        sub_labels = kmeans.fit_predict(subX)
+                        unique_sub = set(sub_labels)
+                        
+                        if len(unique_sub) <= 1:
+                            print(f"     ❌ Cluster {cid}: Both HDBSCAN and K-means failed - giving up")
+                            failure_count += 1
+                            continue
+                        else:
+                            print(f"     ✅ Cluster {cid}: K-means succeeded → {len(unique_sub)} subclusters")
+                    except Exception as kmeans_error:
+                        print(f"     ❌ Cluster {cid}: K-means failed ({kmeans_error}) - giving up")
+                        failure_count += 1
+                        continue
+            else:
+                print(f"     ✅ Cluster {cid}: HDBSCAN succeeded → {len(unique_sub)} subclusters")
+            
+            # Map the new labels
+            mapping = {old: next_global + i for i, old in enumerate(sorted(unique_sub))}
+            next_global += len(unique_sub)
+            for idx_local, sl in zip(indices, sub_labels):
+                if sl == -1:
+                    continue
+                cluster_labels[idx_local] = mapping[sl]
+            
+            success_count += 1
+
+        # Regenerate cluster_topics with new labels
+        print(f"   🔄 Regenerating cluster topics after subdivision...")
+        cluster_topics = auto_label_clusters(chunk_metadata, cluster_labels, api_key)
+        
+        # Print summary of subdivision results
+        print(f"   📊 Generic cluster subdivision summary:")
+        print(f"     • Successfully subdivided: {success_count}/{len(generic_to_split)} clusters")
+        print(f"     • Failed to subdivide: {failure_count}/{len(generic_to_split)} clusters")
+        print(f"     • Final cluster count: {len(cluster_topics)} clusters")
+        
+        # Update result with refined clusters
+        result['clusters'] = cluster_topics
+        result['cluster_summary'] = [
+            {
+                'cluster_id': cluster_id,
+                'topic_name': info['topic_name'],
+                'chunk_count': info['chunk_count'],
+                'conversation_count': len(set(chunk['conversation_id'] for chunk in info['chunks'])),
+                'keywords': info['keywords'][:5]
+            }
+            for cluster_id, info in cluster_topics.items()
+        ]
+    # -------------------------------------------------------------------
     
     return result
 
@@ -2469,31 +2686,33 @@ def auto_label_clusters(chunk_metadata: List[Dict], cluster_labels: List[int], a
         # Collect all text from this cluster
         cluster_texts = [chunk['text'] for chunk in chunks]
         
-        # Use TF-IDF to find distinctive terms
-        vectorizer = TfidfVectorizer(
-            ngram_range=(1, 2),  # Include phrases
-            stop_words='english',
-            max_features=2000,
-            min_df=1,  # Must appear at least once
-            max_df=0.8  # Don't use terms that appear in >80% of chunks
-        )
-        
-        try:
-            tfidf_matrix = vectorizer.fit_transform(cluster_texts)
-            feature_names = vectorizer.get_feature_names_out()
-            
-            # Get top terms by total TF-IDF weight across cluster
-            tfidf_sums = tfidf_matrix.sum(axis=0).A1
-            top_indices = tfidf_sums.argsort()[-10:][::-1]
-            top_terms = [feature_names[i] for i in top_indices]
-            
-            # Generate coherent topic name using LLM
-            topic_name = generate_coherent_topic_name(top_terms[:5], chunks, cluster_id, api_key)
-            
-        except Exception as e:
-            print(f"   Warning: TF-IDF failed for cluster {cluster_id}: {e}")
-            topic_name = f"Topic {cluster_id + 1}"
+        # If cluster is very small, skip TF-IDF and use LLM directly
+        if len(chunks) < 6:
             top_terms = []
+            topic_name = generate_coherent_topic_name(top_terms, chunks, cluster_id, api_key)
+        else:
+            # Use TF-IDF to find distinctive terms
+            vectorizer = TfidfVectorizer(
+                ngram_range=(1, 2),  # Include phrases
+                stop_words='english',
+                max_features=2000,
+                min_df=1,
+                max_df=0.8
+            )
+            try:
+                tfidf_matrix = vectorizer.fit_transform(cluster_texts)
+                feature_names = vectorizer.get_feature_names_out()
+                
+                # Get top terms by total TF-IDF weight across cluster
+                tfidf_sums = tfidf_matrix.sum(axis=0).A1
+                top_indices = tfidf_sums.argsort()[-10:][::-1]
+                top_terms = [feature_names[i] for i in top_indices]
+                
+                topic_name = generate_coherent_topic_name(top_terms[:5], chunks, cluster_id, api_key)
+            except Exception as e:
+                print(f"   Warning: TF-IDF failed for cluster {cluster_id}: {e}")
+                top_terms = []
+                topic_name = generate_coherent_topic_name([], chunks, cluster_id, api_key)
         
         # Calculate cluster statistics
         total_tokens = sum(chunk['token_count'] for chunk in chunks)
@@ -2511,3 +2730,119 @@ def auto_label_clusters(chunk_metadata: List[Dict], cluster_labels: List[int], a
         }
     
     return cluster_topics
+
+# ------------------- LLM Generic Cluster Detection -------------------
+def is_cluster_generic_llm(topic_name: str, keywords: list[str], sample_titles: list[str], chunk_count: int, api_key: str | None) -> bool:
+    """Return True if LLM suggests the cluster is still too broad and should be split."""
+    # Heuristic fallback if no API key
+    GENERIC_TERMS = {
+        'overview','introduction','summary','method','approach','general','basics',
+        'guide','tutorial','help','question','explain','explanation','steps','procedure'
+    }
+    if not api_key:
+        hits = [k for k in keywords if k.lower() in GENERIC_TERMS]
+        # Also flag if cluster very large
+        size_flag = chunk_count > 50
+        return size_flag or (len(hits) / max(1, len(keywords)) > 0.6)
+
+    try:
+        import openai
+        client = openai.OpenAI(api_key=api_key)
+        prompt = (
+            "You are refining an automatic conversation clustering.\n"
+            "A cluster should be split further if it still contains multiple distinct sub-themes.\n"
+            "Decision criteria:\n"
+            "• Very generic verbs (method, approach, overview, help, fix, etc.)\n"
+            "• More than ~50 conversations covering different subjects.\n"
+            "\n"
+            f"Topic name: \"{topic_name}\"\n"
+            f"Cluster size (conversations/chunks): {chunk_count}\n"
+            f"Top keywords: {', '.join(keywords[:5]) or 'N/A'}\n"
+            f"Example conversation titles: { '; '.join(sample_titles[:3]) or 'N/A'}\n\n"
+            "Question: Does this cluster still combine multiple sub-themes and should be split further?\n"
+            "Answer ONLY YES or NO."
+        )
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=3,
+            temperature=0.1,
+        )
+        ans = resp.choices[0].message.content.strip().upper()
+        return ans.startswith('Y')
+    except Exception as e:
+        print(f"   Warning: genericity LLM check failed ({e}); fallback to heuristic")
+        hits = [k for k in keywords if k.lower() in GENERIC_TERMS]
+        # Also flag if cluster very large
+        size_flag = chunk_count > 50
+        return size_flag or (len(hits) / max(1, len(keywords)) > 0.6)
+
+def is_generic_topic_name(topic_name: str) -> bool:
+    """Detect if a topic name is generic and should be grouped into 'Uncategorized'"""
+    if not topic_name:
+        return True
+    
+    topic_lower = topic_name.lower().strip()
+    
+    # Check for common generic patterns
+    generic_patterns = [
+        r'^topic\s+\d+$',              # "Topic 13", "Topic 9", etc.
+        r'^cluster\s+\d+$',            # "Cluster 1", "Cluster 2", etc.
+        r'^general\s+discussion$',     # "General Discussion"
+        r'^uncategorized$',            # "Uncategorized"
+        r'^misc$',                     # "Misc"
+        r'^other$',                    # "Other"
+        r'^unknown$',                  # "Unknown"
+        r'^untitled$',                 # "Untitled"
+        r'^conversation\s+\d+$',       # "Conversation 1", etc.
+        r'^discussion\s+\d+$',         # "Discussion 1", etc.
+        r'^category\s+\d+$',           # "Category 1", etc.
+        r'^group\s+\d+$',              # "Group 1", etc.
+    ]
+    
+    for pattern in generic_patterns:
+        import re
+        if re.match(pattern, topic_lower):
+            return True
+    
+    # Check for very generic single words
+    very_generic_words = {
+        'help', 'question', 'discussion', 'conversation', 'chat', 'talk',
+        'general', 'misc', 'other', 'various', 'different', 'multiple',
+        'request', 'inquiry', 'query', 'issue', 'problem', 'solution'
+    }
+    
+    # If it's just a single generic word
+    if topic_lower in very_generic_words:
+        return True
+    
+    return False
+
+def group_generic_topics(topics: List[Dict]) -> List[Dict]:
+    """Group generic topic names into a single 'Uncategorized' category"""
+    if not topics:
+        return topics
+    
+    categorized_topics = []
+    generic_count = 0
+    
+    for topic in topics:
+        topic_name = topic.get('topic', '').strip()
+        
+        if is_generic_topic_name(topic_name):
+            generic_count += topic.get('count', 0)
+        else:
+            categorized_topics.append(topic)
+    
+    # If we have generic topics, add them as a single "Uncategorized" entry
+    if generic_count > 0:
+        categorized_topics.append({
+            'topic': 'Uncategorized',
+            'count': generic_count,
+            'emoji': '📂'  # Folder emoji for uncategorized
+        })
+    
+    # Sort by count (descending) and return
+    return sorted(categorized_topics, key=lambda x: x['count'], reverse=True)
+
+# ---------------------------------------------------------------------

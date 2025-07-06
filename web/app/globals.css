@@ -30,30 +30,7 @@
     --chart-text: 210 40% 98%;
   }
 
-  .light {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 142.1 76.2% 36.3%;
-    --primary-foreground: 355.7 100% 97.3%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 142.1 76.2% 36.3%;
-    --accent-green: 142.1 76.2% 36.3%;
-    --terminal-green: 120 100% 25%;
-    --chart-text: 240 10% 3.9%;
-  }
+
 }
 
 @layer base {
@@ -84,19 +61,7 @@
     background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
   }
 
-  /* Ombre Blended Light Mode Background - More Visible */
-  body.light {
-    background: 
-      /* Visible light ombre gradients */
-      radial-gradient(ellipse at top left, rgba(16, 185, 129, 0.20) 0%, rgba(16, 185, 129, 0.08) 30%, transparent 65%),
-      radial-gradient(ellipse at top right, rgba(59, 130, 246, 0.18) 0%, rgba(59, 130, 246, 0.06) 30%, transparent 65%),
-      radial-gradient(ellipse at bottom left, rgba(168, 85, 247, 0.15) 0%, rgba(168, 85, 247, 0.05) 30%, transparent 65%),
-      radial-gradient(ellipse at bottom right, rgba(34, 197, 94, 0.12) 0%, rgba(34, 197, 94, 0.04) 30%, transparent 65%),
-      radial-gradient(ellipse at center, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.02) 40%, transparent 80%),
-      /* Base light gradient */
-      linear-gradient(135deg, #ffffff 0%, #f8fafc 20%, #f1f5f9 40%, #e2e8f0 60%, #f8fafc 80%, #ffffff 100%);
-    background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
-  }
+
 
 
 
@@ -119,12 +84,7 @@
     background-position: 0 0, 0 0;
   }
 
-  body.light::before {
-    opacity: 0.08;
-    background-image: 
-      linear-gradient(rgba(34, 197, 94, 0.1) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(34, 197, 94, 0.1) 1px, transparent 1px);
-  }
+
 
   /* Minimal Tech Overlay - Let ombre shine through */
   body::after {
@@ -143,12 +103,7 @@
     background-position: 0 0;
   }
 
-  body.light::after {
-    background: 
-      linear-gradient(0deg, transparent 97%, rgba(34, 197, 94, 0.02) 98%, transparent 99%);
-    background-size: 100% 12px;
-    background-position: 0 0;
-  }
+
 
 
 
@@ -511,5 +466,12 @@
   /* Hover enhancement for interactive elements */
   button:hover, input:hover, a:hover, [role="button"]:hover {
     cursor: none;
+  }
+
+
+  /* Ensure legend text is white */
+  .apexcharts-legend-text, .apexcharts-legend-marker {
+    color: hsl(var(--foreground)) !important;
+    fill: hsl(var(--foreground)) !important;
   }
 } 

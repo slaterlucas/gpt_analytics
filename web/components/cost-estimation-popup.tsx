@@ -45,6 +45,7 @@ interface CostBreakdown {
     size_bytes: number;
     detected_format: string;
   };
+  estimated_final_clusters?: number;
 }
 
 interface CostEstimationPopupProps {
@@ -69,7 +70,7 @@ export const CostEstimationPopup: React.FC<CostEstimationPopupProps> = ({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto retro-border bg-card terminal-glow">
-        <CardHeader className="border-b border-border">
+        <CardHeader className="border-b border-border pb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-terminal" />
@@ -89,7 +90,7 @@ export const CostEstimationPopup: React.FC<CostEstimationPopupProps> = ({
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="space-y-6 p-6">
+        <CardContent className="space-y-6 p-6 pt-6">
           {isLoading && (
             <div className="text-center py-8">
               <div className="inline-flex items-center gap-3 text-muted-foreground font-mono">
@@ -112,7 +113,7 @@ export const CostEstimationPopup: React.FC<CostEstimationPopupProps> = ({
             <>
               {/* File Info */}
               {costData.file_info && (
-                <div className="bg-muted/30 rounded-md p-4 space-y-2">
+                <div className="bg-muted/30 rounded-md p-4 space-y-2 mb-6">
                   <h3 className="font-mono text-sm font-medium text-terminal">FILE_INFO:</h3>
                   <div className="space-y-1 text-sm font-mono text-muted-foreground">
                     <div>• Name: {costData.file_info.filename}</div>
@@ -124,17 +125,17 @@ export const CostEstimationPopup: React.FC<CostEstimationPopupProps> = ({
               )}
 
               {/* Analysis Settings */}
-              <div className="bg-muted/30 rounded-md p-4 space-y-2">
+              <div className="bg-muted/30 rounded-md p-4 space-y-2 mt-4">
                 <h3 className="font-mono text-sm font-medium text-terminal">ANALYSIS_CONFIG:</h3>
                 <div className="space-y-1 text-sm font-mono text-muted-foreground">
                   <div>• Conversations: {costData.total_conversations.toLocaleString()}</div>
-                  <div>• Topic clusters: {costData.num_clusters}</div>
+                  <div>• Topic clusters: ~{costData.estimated_final_clusters ?? costData.num_clusters}</div>
                   <div>• LLM naming: {costData.use_llm_naming ? 'ENABLED' : 'DISABLED'}</div>
                 </div>
               </div>
 
               {/* Cost Breakdown */}
-              <div className="space-y-4">
+              <div className="space-y-4 mt-6">
                 <h3 className="font-mono text-sm font-medium text-terminal">COST_BREAKDOWN:</h3>
                 
                 <div className="space-y-3">

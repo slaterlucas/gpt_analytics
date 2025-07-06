@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { Upload, Terminal, Zap, Moon, Sun, MessageSquare, Database, Clock, Loader2, Users } from 'lucide-react';
+import { Upload, Terminal, Zap, MessageSquare, Database, Clock, Loader2, Users, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,11 +52,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, selectedFile }) =
         {/* Custom styled overlay */}
         <div className="font-mono retro-border bg-muted/30 h-10 px-3 py-2 flex items-center relative">
           <div className="flex items-center gap-3">
-            <div className="bg-terminal text-black px-3 py-1 rounded-md font-bold text-sm">
-              Choose File
+            <div className="retro-border border-terminal px-3 py-1 rounded-md cursor-pointer select-none bg-transparent">
+              <span className="text-terminal font-bold text-sm">Choose File</span>
             </div>
             <span className="text-muted-foreground text-sm">
-              {selectedFile ? selectedFile.name : 'No file chosen'}
+              {selectedFile ? 'conversations.json' : ''}
             </span>
           </div>
           <Upload className="absolute right-3 w-4 h-4 text-muted-foreground pointer-events-none" />
@@ -100,19 +100,6 @@ const LoadingScreen: React.FC<{ progress: number; message: string; theme: string
         <div className="glitch-pixel"></div>
       </div>
       
-      {/* Theme toggle */}
-      <div className="absolute top-4 right-4 z-20">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {}} // Disabled during loading
-          disabled
-          className="retro-border terminal-glow font-mono opacity-50"
-        >
-          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </Button>
-      </div>
-
       <div className="w-full max-w-md sm:max-w-lg px-4">
         {/* Header */}
         <div className="text-center mb-8">
@@ -128,8 +115,8 @@ const LoadingScreen: React.FC<{ progress: number; message: string; theme: string
         </div>
 
         {/* Loading Card */}
-        <Card className="retro-border bg-card terminal-glow">
-          <CardHeader className="text-center border-b border-border">
+        <Card className="retro-border bg-blue-950/90 backdrop-blur-sm terminal-glow">
+          <CardHeader className="text-center border-b border-border pb-4">
             <CardTitle className="text-xl flex items-center justify-center gap-2 font-mono">
               <Loader2 className="w-5 h-5 text-terminal animate-spin" />
               ANALYZING_CONVERSATIONS
@@ -139,7 +126,7 @@ const LoadingScreen: React.FC<{ progress: number; message: string; theme: string
             </CardDescription>
           </CardHeader>
 
-          <CardContent className="p-6">
+          <CardContent className="p-6 pb-8 pt-4">
             {/* Processing steps */}
             <div className="space-y-3 text-sm font-mono">
               <div className={`flex items-center justify-between ${progress > 0 ? 'text-terminal' : 'text-muted-foreground'}`}>
@@ -277,7 +264,7 @@ interface ChartCardProps {
 }
 
 const ChartCard: React.FC<ChartCardProps> = ({ title, description, icon: Icon, children }) => (
-  <Card className="retro-border bg-card terminal-glow">
+  <Card className="retro-border bg-card terminal-glow overflow-visible">
     <CardHeader className="border-b border-border">
       <CardTitle className="text-lg flex items-center gap-2 font-mono">
         <Icon className="w-5 h-5 text-terminal" />
@@ -336,25 +323,120 @@ interface CostBreakdown {
   };
 }
 
+// Settings Modal Component
+const SettingsModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  apiKey: string;
+  setApiKey: (key: string) => void;
+}> = ({ isOpen, onClose, apiKey, setApiKey }) => {
+  const [tempApiKey, setTempApiKey] = useState(apiKey);
+
+  useEffect(() => {
+    setTempApiKey(apiKey);
+  }, [apiKey]);
+
+  const handleSave = () => {
+    setApiKey(tempApiKey);
+    // Store in localStorage
+    if (tempApiKey) {
+      localStorage.setItem('gpt_analytics_api_key', tempApiKey);
+    } else {
+      localStorage.removeItem('gpt_analytics_api_key');
+    }
+    onClose();
+  };
+
+  const handleCancel = () => {
+    setTempApiKey(apiKey);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <div className="bg-card retro-border terminal-glow rounded-lg max-w-md w-full">
+        <div className="border-b border-border p-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold font-mono text-terminal flex items-center gap-2">
+              <Settings className="w-5 h-5" />
+              SETTINGS_CONFIGURATION
+            </h2>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCancel}
+              className="text-xs font-mono"
+            >
+              ✕
+            </Button>
+          </div>
+        </div>
+        
+        <div className="p-6 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="settings-api-key" className="text-sm font-mono font-medium">
+              OPENAI_API_KEY (OPTIONAL):
+            </Label>
+            <Input
+              id="settings-api-key"
+              type="password"
+              value={tempApiKey}
+              onChange={(e) => setTempApiKey(e.target.value)}
+              placeholder="sk-... (leave empty for basic analysis)"
+              className="font-mono retro-border bg-muted/30"
+            />
+            <div className="space-y-2 text-xs text-muted-foreground font-mono">
+              <p><strong>With API key:</strong> AI-powered topic analysis using GPT</p>
+              <p><strong>No API key:</strong> Advanced semantic analysis using BERTopic</p>
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-4">
+            <Button
+              onClick={handleSave}
+              className="flex-1 bg-terminal hover:bg-terminal/90 text-black font-mono font-bold retro-border"
+            >
+              SAVE_CONFIGURATION
+            </Button>
+            <Button
+              onClick={handleCancel}
+              variant="outline"
+              className="flex-1 font-mono retro-border"
+            >
+              CANCEL
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [apiKey, setApiKey] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<any>(null);
-  const [apiKey, setApiKey] = useState('');
-  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
-  const { theme, setTheme } = useTheme();
-
-  // Cost estimation state
+  const [progress, setProgress] = useState(0);
   const [showCostPopup, setShowCostPopup] = useState(false);
   const [costData, setCostData] = useState<CostBreakdown | null>(null);
   const [costLoading, setCostLoading] = useState(false);
   const [costError, setCostError] = useState<string | null>(null);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
 
+  // Load API key from localStorage on mount
   useEffect(() => {
     setMounted(true);
+    const savedApiKey = localStorage.getItem('gpt_analytics_api_key');
+    if (savedApiKey) {
+      setApiKey(savedApiKey);
+    }
   }, []);
 
   const showError = (message: string) => {
@@ -558,14 +640,14 @@ export default function Home() {
     ];
 
     return (
-      <div className="space-y-4 max-h-96 overflow-y-auto">
+      <div className="space-y-3 overflow-y-auto max-h-[37rem] pt-2 retro-scroll pr-2 overflow-x-visible">
         {topicList.map((topic: any, index: number) => {
           const gradientClass = gradients[index % gradients.length];
           
           return (
             <div 
               key={index} 
-              className={`group relative p-4 rounded-xl bg-gradient-to-r ${gradientClass} bg-opacity-10 backdrop-blur-sm border border-white/10 hover:scale-105 hover:shadow-lg transition-all duration-300 cursor-pointer`}
+              className={`group relative p-3 rounded-xl bg-gradient-to-r ${gradientClass} bg-opacity-10 backdrop-blur-sm border border-white/10 hover:scale-[1.03] hover:shadow-lg transition-all duration-300 cursor-pointer`}
             >
               {/* Animated background shine effect */}
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl" />
@@ -584,9 +666,9 @@ export default function Home() {
                     </div>
                     
                     {/* Animated progress bar with shine effect */}
-                    <div className="w-full bg-black/20 rounded-full h-3 overflow-hidden">
+                    <div className="w-full bg-black/20 rounded-full h-2 overflow-hidden">
                       <div 
-                        className={`h-3 rounded-full bg-gradient-to-r ${gradientClass} transition-all duration-500 relative overflow-hidden`}
+                        className={`h-2 rounded-full bg-gradient-to-r ${gradientClass} transition-all duration-500 relative overflow-hidden`}
                         style={{ width: `${topic.percentage}%` }}
                       >
                         {/* Shine effect on progress bar */}
@@ -646,8 +728,10 @@ export default function Home() {
             zoomout: true,
             pan: true,
             reset: true
-          }
-        }
+          },
+          theme: 'light'
+        },
+        theme: 'light' // Use dark theme for toolbar (light text on dark background)
       },
       labels: labels,
       legend: {
@@ -676,13 +760,13 @@ export default function Home() {
         style: {
           fontFamily: 'JetBrains Mono, monospace',
           fontSize: '11px',
-          colors: [theme === 'dark' ? '#f8fafc' : '#1e293b'],
+          colors: ['#f8fafc'], // White text for dark mode
           fontWeight: 'bold'
         },
         background: {
           enabled: true,
-          foreColor: theme === 'dark' ? '#1e293b' : '#f8fafc',
-          borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
+          foreColor: '#1e293b', // Dark background
+          borderColor: '#334155', // Dark border
           borderWidth: 1,
           borderRadius: 4,
           padding: 4,
@@ -690,7 +774,7 @@ export default function Home() {
         }
       },
       tooltip: {
-        theme: theme === 'dark' ? 'dark' : 'light'
+        theme: 'dark'
       },
       responsive: [{
         breakpoint: 640,
@@ -708,7 +792,7 @@ export default function Home() {
     return (
       <div className="chart-container">
         <Chart 
-          key={`models-chart-${theme}`}
+          key={`models-chart-dark`}
           options={options} 
           series={series} 
           type="donut" 
@@ -797,7 +881,7 @@ export default function Home() {
             pan: true,
             reset: true
           },
-          theme: 'light' // Always use light theme for toolbar (dark text on white background)
+          theme: 'dark' // Use dark theme for toolbar (light text on dark background)
         },
         zoom: { 
           enabled: true, 
@@ -902,13 +986,13 @@ export default function Home() {
       stroke: { curve: 'smooth' as const, width: 2, colors: ['hsl(120 100% 50%)'] },
       dataLabels: { enabled: false },
       grid: {
-        borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
+        borderColor: '#334155',
         strokeDashArray: 3,
         xaxis: { lines: { show: true } },
         yaxis: { lines: { show: true } }
       },
       tooltip: {
-        theme: theme === 'dark' ? 'dark' : 'light',
+        theme: 'dark',
         style: { fontFamily: 'JetBrains Mono, monospace' },
         x: { format: 'MMM d, yyyy' }
       },
@@ -927,7 +1011,7 @@ export default function Home() {
           type="area" 
           height={getChartHeight()} 
         />
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono">
+        <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono">
           <div className="bg-muted/30 retro-border rounded-md p-3 text-center">
             <div className="text-terminal font-bold">{data.total_days}</div>
             <div className="text-muted-foreground">ACTIVE_DAYS</div>
@@ -983,15 +1067,15 @@ export default function Home() {
           <div className="glitch-pixel"></div>
         </div>
         
-        {/* Theme toggle - back to top right */}
-        <div className="absolute top-4 right-4 z-20">
+        {/* Top right controls */}
+        <div className="absolute top-4 right-4 z-20 flex gap-2">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            onClick={() => setShowSettingsModal(true)}
             className="retro-border terminal-glow font-mono"
           >
-            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            <Settings className="w-4 h-4" />
           </Button>
         </div>
 
@@ -1052,6 +1136,7 @@ export default function Home() {
               description={`conversation topics ${
                 results.topics.topic_mode === 'openai' ? '(AI-enhanced)' : 
                 results.topics.topic_mode === 'bertopic' ? '(semantic-based)' :
+                results.topics.topic_mode === 'advanced_embedding_clustering' ? '(advanced clustering)' :
                 '(keyword-based)'
               }`}
               icon={Terminal}
@@ -1096,6 +1181,14 @@ export default function Home() {
             </Button>
           </div>
         </div>
+
+        {/* Settings Modal */}
+        <SettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          apiKey={apiKey}
+          setApiKey={setApiKey}
+        />
       </div>
     );
   }
@@ -1124,15 +1217,15 @@ export default function Home() {
         <div className="glitch-pixel"></div>
       </div>
       
-      {/* Theme toggle - back to top right */}
-      <div className="absolute top-4 right-4 z-20">
+      {/* Top right controls */}
+      <div className="absolute top-4 right-4 z-20 flex gap-2">
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          onClick={() => setShowSettingsModal(true)}
           className="retro-border terminal-glow font-mono"
         >
-          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          <Settings className="w-4 h-4" />
         </Button>
       </div>
 
@@ -1152,8 +1245,8 @@ export default function Home() {
           </div>
 
           {/* Main Card */}
-          <Card className="retro-border bg-card terminal-glow">
-            <CardHeader className="text-center border-b border-border">
+          <Card className="retro-border bg-blue-950/90 backdrop-blur-sm terminal-glow">
+            <CardHeader className="text-center border-b border-border pb-4">
               <CardTitle className="text-xl flex items-center justify-center gap-2 font-mono">
                 <Zap className="w-5 h-5 text-terminal" />
                 SETUP_DASHBOARD
@@ -1163,27 +1256,10 @@ export default function Home() {
               </CardDescription>
             </CardHeader>
 
-            <CardContent className="space-y-6 p-6">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                {/* API Key Input */}
-                <div className="space-y-2">
-                  <Label htmlFor="apiKey" className="text-sm font-mono font-medium">
-                    OPENAI_API_KEY (OPTIONAL):
-                  </Label>
-                  <Input
-                    id="apiKey"
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="sk-... (leave empty for basic analysis)"
-                    className="font-mono retro-border bg-muted/30"
-                  />
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    <p><strong>With API key:</strong> AI-powered topic analysis using GPT</p>
-                    <p><strong>Without API key:</strong> Advanced semantic analysis using BERTopic</p>
-                  </div>
-                </div>
-
+            <CardContent className="space-y-4 p-6">
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Text-based divider for file section */}
+                <div className="-mx-6 h-px bg-[hsl(var(--border))] opacity-60 select-none"></div>
                 {/* File Upload */}
                 <FileUpload onFileSelect={setSelectedFile} selectedFile={selectedFile} />
 
@@ -1191,7 +1267,7 @@ export default function Home() {
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full bg-terminal hover:bg-terminal/90 text-black font-mono font-bold retro-border"
+                  className="w-full bg-[hsl(var(--terminal-green))] hover:opacity-90 text-black font-mono font-bold retro-border"
                 >
                   <span className="flex items-center gap-2">
                     <Terminal className="w-4 h-4" />
@@ -1232,6 +1308,14 @@ export default function Home() {
         costData={costData}
         isLoading={costLoading}
         error={costError}
+      />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        apiKey={apiKey}
+        setApiKey={setApiKey}
       />
 
       <CursorTrail />
