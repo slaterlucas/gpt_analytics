@@ -2,6 +2,10 @@
 
 Analyze your ChatGPT export in seconds. GPT Analytics is a modern full-stack dashboard (Next.js 14 + FastAPI) that surfaces conversation topics, model usage, daily activity, and more — all wrapped in a retro-terminal UI.
 
+## Demo Link
+
+https://slaterlucas.github.io/gpt_analytics/
+
 ## Prerequisites
 - Python 3.9 +
 - Node.js 18 +
